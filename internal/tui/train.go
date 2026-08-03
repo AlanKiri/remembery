@@ -30,36 +30,20 @@ func (m *Model) updateTrain(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.hint = false
 		return m, nil
 	case "ctrl+h":
-		m.hint = true
-		m.input = ""
+		m.hint = !m.hint
 		return m, nil
 	case "backspace":
-		if m.hint {
-			m.hint = false
-			m.input = ""
-			return m, nil
-		}
 		r := []rune(m.input)
 		if len(r) > 0 {
 			m.input = string(r[:len(r)-1])
 		}
 		return m, nil
 	case "enter":
-		if m.hint {
-			m.hint = false
-			m.input = ""
-			return m, nil
-		}
 		m.checkCorrect()
 		if m.delaying {
 			return m, tea.Tick(time.Second, func(t time.Time) tea.Msg { return tickMsg{t} })
 		}
 		return m, nil
-	}
-
-	if m.hint {
-		m.hint = false
-		m.input = ""
 	}
 
 	if msg.Type == tea.KeyRunes {
@@ -192,45 +176,72 @@ func (m Model) trainView() string {
 		return "loading..."
 	}
 
-	b.WriteString(lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("Training: %s (level %d, attempt %d/%d)",
-		m.trainer.Label, m.trainer.Level, m.attempt+1, m.mask.Level.RepetitionCount)))
+	b.WriteString(renderTitle(fmt.Sprintf("Training: %s", m.trainer.Label)))
 	b.WriteString("\n\n")
-
-	if m.hint {
-		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("226")).Bold(true).Render("HINT — full password"))
-		b.WriteString("\n")
-		b.WriteString(string(m.mask.Password))
-		b.WriteString("\n\n")
-		b.WriteString("Press any key to hide the hint and continue.")
-		return b.String()
-	}
+	b.WriteString(lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("Level %d — attempt %d/%d",
+		m.trainer.Level, m.attempt+1, m.mask.Level.RepetitionCount)))
+	b.WriteString("\n\n")
 
 	if m.delaying {
 		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("250")).Render(fmt.Sprintf("Correct! Next attempt in %d...", m.countdown)))
 		return b.String()
 	}
 
-	validation := m.eng.ValidateRunes([]rune(m.input), m.mask.Password)
-	prompt := m.eng.Display(m.input, m.mask, validation)
-	b.WriteString(prompt)
+	promptText := m.mask.Blurred
+	promptColor := "213"
+	if m.hint {
+		promptText = string(m.mask.Password)
+		promptColor = "226"
+	}
+
+	inputRunes := []rune(m.input)
+	pos := len(inputRunes)
+	if pos >= len(m.mask.Password) {
+		pos = len(m.mask.Password) - 1
+	}
+	if pos < 0 {
+		pos = 0
+	}
+	leftPad := 1
+	arrow := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("255")).
+		Render(strings.Repeat(" ", leftPad+pos) + "▼")
+
+	b.WriteString(arrow)
+	b.WriteString("\n")
+	b.WriteString(lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color(promptColor)).
+		Padding(0, 0, 0, leftPad).
+		Render(promptText))
+	b.WriteString("\n\n")
+
+	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("250")).Render("Input: " + m.input))
 	b.WriteString("\n\n")
 
 	status := fmt.Sprintf("typed: %d / %d", len([]rune(m.input)), len(m.mask.Password))
 	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("250")).Render(status))
-	b.WriteString("\n\n")
 
-	inst := []string{
-		"Type the full password.",
-		"Enter: submit",
-		"Backspace: remove last character",
-		"Ctrl+H: hint",
-		"Esc: quit training",
+	body := strings.TrimSuffix(b.String(), "\n")
+	footer := dimStyle().Render("type • Enter: submit • Backspace: remove • Ctrl+H: toggle hint • Esc: quit")
+
+	if m.height > 0 {
+		bodyLines := strings.Count(body, "\n") + 1
+		footerLines := strings.Count(footer, "\n") + 1
+		gap := m.height - bodyLines - footerLines
+		if gap < 0 {
+			gap = 0
+		}
+		body += strings.Repeat("\n", gap) + footer
+	} else {
+		body += "\n\n" + footer
 	}
-	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("250")).Render(strings.Join(inst, " • ")))
-	return b.String()
+
+	return body
 }
 
 func (m Model) levelView() string {
-	return fmt.Sprintf("You are ready to advance %q to level %d.\n\nWarning: sessions at level will reset.\n\n[y]es / [n]o",
+	body := fmt.Sprintf("You are ready to advance %q to level %d.\n\nWarning: sessions at level will reset.\n\n[y]es / [n]o",
 		m.levelTrainer.Label, m.levelOffer)
+	return renderTitle("Level up") + "\n\n" + body
 }
