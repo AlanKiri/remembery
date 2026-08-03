@@ -1,0 +1,14 @@
+# Binaries
+/passmem
+/password-memorizer-tui
+*.exe
+
+# Go
+/vendor/
+
+# Local data
+data.db
+*.db
+
+# OS
+.DS_Store
