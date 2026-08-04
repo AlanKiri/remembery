@@ -91,42 +91,54 @@ func (m *Model) doCorrect() {
 }
 
 func (m *Model) finishSession() {
-	now := time.Now()
-	if err := m.eng.RecordSession(m.trainer, m.tStart, true, m.attempt, m.tErrors); err != nil {
-		m.errMsg = err.Error()
-		m.screen = screenList
-		return
+	var b strings.Builder
+	b.WriteString("Great job!\n\n")
+
+	if m.counts {
+		now := time.Now()
+		if err := m.eng.RecordSession(m.trainer, m.tStart, true, m.attempt, m.tErrors); err != nil {
+			m.errMsg = err.Error()
+			m.screen = screenList
+			return
+		}
+
+		sess := store.Session{
+			TrainerID:   m.trainer.ID,
+			StartedAt:   m.tStart,
+			CompletedAt: &now,
+			Repetitions: m.attempt,
+			Errors:      m.tErrors,
+			Successful:  true,
+		}
+		if _, err := m.db.CreateSession(sess); err != nil {
+			m.errMsg = err.Error()
+			m.screen = screenList
+			return
+		}
+		if err := m.db.UpdateTrainer(*m.trainer); err != nil {
+			m.errMsg = err.Error()
+			m.screen = screenList
+			return
+		}
+
+		b.WriteString(fmt.Sprintf("Repetitions: %d\nErrors: %d\nTotal sessions: %d\n",
+			m.attempt, m.tErrors, m.trainer.TotalSessions))
+		if m.trainer.NextDue != nil {
+			b.WriteString(fmt.Sprintf("Next review: %s\n", m.trainer.NextDue.Format("2006-01-02 15:04")))
+		}
+
+		can, next := m.eng.CanAdvance(m.trainer)
+		if can {
+			m.levelTrainer = m.trainer
+			m.levelOffer = next
+			b.WriteString(fmt.Sprintf("\nYou are ready to advance to level %d!", next))
+		}
+	} else {
+		b.WriteString("Practice complete.\nNo progress was recorded because this trainer is not due yet.")
 	}
 
-	sess := store.Session{
-		TrainerID:   m.trainer.ID,
-		StartedAt:   m.tStart,
-		CompletedAt: &now,
-		Repetitions: m.attempt,
-		Errors:      m.tErrors,
-		Successful:  true,
-	}
-	if _, err := m.db.CreateSession(sess); err != nil {
-		m.errMsg = err.Error()
-		m.screen = screenList
-		return
-	}
-	if err := m.db.UpdateTrainer(*m.trainer); err != nil {
-		m.errMsg = err.Error()
-		m.screen = screenList
-		return
-	}
-
-	can, next := m.eng.CanAdvance(m.trainer)
-	if can {
-		m.levelTrainer = m.trainer
-		m.levelOffer = next
-		m.screen = screenLevel
-		return
-	}
-
-	m.loadTrainers()
-	m.screen = screenList
+	m.congrats = b.String()
+	m.screen = screenCongrats
 }
 
 func (m *Model) updateTrainTick(msg tickMsg) (tea.Model, tea.Cmd) {
@@ -183,7 +195,8 @@ func (m Model) trainView() string {
 	b.WriteString("\n\n")
 
 	if m.delaying {
-		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("250")).Render(fmt.Sprintf("Correct! Next attempt in %d...", m.countdown)))
+		msg := fmt.Sprintf("Correct! Next attempt in %d...\n\nA beep will be played once the timer ends.", m.countdown)
+		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("250")).Render(msg))
 		return b.String()
 	}
 
