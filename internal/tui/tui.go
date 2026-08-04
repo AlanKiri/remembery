@@ -17,6 +17,8 @@ import (
 	"github.com/alankiri/password-memorizer-tui/internal/store"
 )
 
+type welcomeTickMsg struct{ t time.Time }
+
 type screen int
 
 const (
@@ -25,7 +27,9 @@ const (
 	screenNew
 	screenEdit
 	screenDelete
+	screenEarlyTrain
 	screenTrain
+	screenCongrats
 	screenLevel
 )
 
@@ -36,9 +40,11 @@ type Model struct {
 	levels []levels.Level
 	beeper beep.Beep
 
-	width, height int
-	screen        screen
-	errMsg        string
+	width, height    int
+	screen           screen
+	errMsg           string
+	welcomeDeadline  time.Time
+	welcomeRemaining int
 
 	// list
 	trainers []store.Trainer
@@ -59,9 +65,14 @@ type Model struct {
 	// delete
 	deleteIndex int
 
+	// early train warning
+	earlyTrainer *store.Trainer
+
 	// train
 	trainer    *store.Trainer
+	counts     bool
 	mask       engine.Mask
+	congrats   string
 	input      string
 	hint       bool
 	hintUntil  time.Time
@@ -98,12 +109,14 @@ func Run() error {
 
 func New(db *store.DB, cfg config.Config, lvl []levels.Level) Model {
 	m := Model{
-		db:     db,
-		eng:    engine.New(lvl),
-		cfg:    cfg,
-		levels: lvl,
-		beeper: beep.Terminal{},
-		screen: screenWelcome,
+		db:               db,
+		eng:              engine.New(lvl),
+		cfg:              cfg,
+		levels:           lvl,
+		beeper:           beep.Terminal{},
+		screen:           screenWelcome,
+		welcomeDeadline:  time.Now().Add(2 * time.Second),
+		welcomeRemaining: 2,
 	}
 	m.newInputs[0] = textinput.New()
 	m.newInputs[0].Placeholder = "Label"
@@ -117,14 +130,16 @@ func New(db *store.DB, cfg config.Config, lvl []levels.Level) Model {
 }
 
 func (m Model) Init() tea.Cmd {
-	return nil
+	return tea.Tick(100*time.Millisecond, func(t time.Time) tea.Msg {
+		return welcomeTickMsg{t}
+	})
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width - 6
-		m.height = msg.Height - 2
+		m.height = msg.Height - 1
 		if m.width < 0 {
 			m.width = 0
 		}
@@ -151,12 +166,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.screen == screenDelete {
 			return m.updateDelete(msg)
 		}
+		if m.screen == screenEarlyTrain {
+			return m.updateEarlyTrain(msg)
+		}
 		if m.screen == screenTrain {
 			return m.updateTrain(msg)
+		}
+		if m.screen == screenCongrats {
+			return m.updateCongrats(msg)
 		}
 		if m.screen == screenLevel {
 			return m.updateLevel(msg)
 		}
+	case welcomeTickMsg:
+		if m.screen != screenWelcome {
+			return m, nil
+		}
+		remaining := time.Until(m.welcomeDeadline)
+		if remaining <= 0 {
+			m.screen = screenList
+			m.loadTrainers()
+			return m, nil
+		}
+		m.welcomeRemaining = int(remaining.Seconds()) + 1
+		return m, tea.Tick(100*time.Millisecond, func(t time.Time) tea.Msg {
+			return welcomeTickMsg{t}
+		})
 	case tickMsg:
 		if m.screen == screenTrain {
 			return m.updateTrainTick(msg)
@@ -178,14 +213,18 @@ func (m Model) View() string {
 		inner = m.editView()
 	case screenDelete:
 		inner = m.deleteView()
+	case screenEarlyTrain:
+		inner = m.earlyView()
 	case screenTrain:
 		inner = m.trainView()
+	case screenCongrats:
+		inner = m.congratsView()
 	case screenLevel:
 		inner = m.levelView()
 	default:
 		inner = "unknown screen"
 	}
-	return lipgloss.NewStyle().Padding(1, 3).Render(inner)
+	return lipgloss.NewStyle().Padding(1, 3, 0, 3).Render(inner)
 }
 
 func (m *Model) loadTrainers() {
@@ -301,12 +340,16 @@ func (m Model) welcomeView() string {
 		Foreground(lipgloss.Color("63")).
 		Render("Welcome to passmem")
 
+	footer := fmt.Sprintf("Press %s to skip, %s to quit.\n%s",
+		rainbow("Enter"), lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("q"),
+		dimStyle().Render(fmt.Sprintf("Skipping in %d...", m.welcomeRemaining)))
+
 	body := lipgloss.NewStyle().
 		Bold(true).
-		Render(fmt.Sprintf("Pending sessions: %d\nTotal trainers: %d\n\nPress %s to start, %s to quit.",
-			due, len(m.trainers), rainbow("Enter"), lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("q")))
+		Render(fmt.Sprintf("Pending sessions: %d\nTotal trainers: %d",
+			due, len(m.trainers)))
 
-	content := title + "\n\n" + body
+	content := title + "\n\n" + body + "\n\n" + footer
 	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, content)
 }
 
@@ -331,7 +374,13 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "enter":
 		if len(m.trainers) > 0 {
-			m.startTraining(&m.trainers[m.cursor])
+			t := &m.trainers[m.cursor]
+			if m.isDue(*t) {
+				m.startTraining(t, true)
+			} else {
+				m.earlyTrainer = t
+				m.screen = screenEarlyTrain
+			}
 		}
 	case "j", "down":
 		if m.cursor < len(m.trainers)-1 {
@@ -720,6 +769,44 @@ func (m Model) editView() string {
 	return body
 }
 
+func (m Model) updateEarlyTrain(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	s := msg.String()
+	if s == "y" {
+		m.startTraining(m.earlyTrainer, false)
+		m.earlyTrainer = nil
+	} else if s == "n" || s == "esc" {
+		m.earlyTrainer = nil
+		m.screen = screenList
+	}
+	return m, nil
+}
+
+func (m Model) earlyView() string {
+	label := m.earlyTrainer.Label
+	red := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+
+	var dueIn string
+	if m.earlyTrainer.NextDue != nil {
+		d := time.Until(*m.earlyTrainer.NextDue)
+		if d > 0 {
+			dueIn = fmt.Sprintf("Due again in %s", formatDuration(d))
+		}
+	}
+
+	body := fmt.Sprintf("%q is not %s yet.\n\n%s\n\nPracticing now will not count toward progress.\n\n[y]es, practice anyway / [n]o, go back",
+		label, red.Render("due"), dueIn)
+	return renderTitle("Not due yet") + "\n\n" + body
+}
+
+func formatDuration(d time.Duration) string {
+	h := int(d.Hours())
+	m := int(d.Minutes()) % 60
+	if h > 0 {
+		return fmt.Sprintf("%dh %dm", h, m)
+	}
+	return fmt.Sprintf("%dm", m)
+}
+
 func (m Model) updateDelete(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	s := msg.String()
 	if s == "y" {
@@ -740,8 +827,27 @@ func (m Model) deleteView() string {
 	return renderTitle("Delete trainer") + "\n\n" + fmt.Sprintf("Delete %q?\n\n[y]es / [n]o", label)
 }
 
-func (m *Model) startTraining(t *store.Trainer) {
+func (m Model) updateCongrats(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	s := msg.String()
+	if s != "" {
+		if m.levelTrainer != nil {
+			m.screen = screenLevel
+		} else {
+			m.loadTrainers()
+			m.screen = screenList
+		}
+		m.congrats = ""
+	}
+	return m, nil
+}
+
+func (m Model) congratsView() string {
+	return renderTitle("Session complete") + "\n\n" + m.congrats + "\n\nPress any key to continue."
+}
+
+func (m *Model) startTraining(t *store.Trainer, counts bool) {
 	m.trainer = t
+	m.counts = counts
 	m.input = ""
 	m.hint = false
 	m.attempt = 0
