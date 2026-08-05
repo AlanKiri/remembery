@@ -45,6 +45,10 @@ func (e *Engine) MaskFor(trainer *store.Trainer) (Mask, error) {
 	return e.maskForPassword(trainer.Password, level, trainer.SessionsAtLevel)
 }
 
+func (e *Engine) Preview(level levels.Level, password string) (Mask, error) {
+	return e.maskForPassword(password, level, 0)
+}
+
 func (e *Engine) maskForPassword(password string, level levels.Level, sessionsAtLevel int) (Mask, error) {
 	runes := []rune(password)
 	n := len(runes)

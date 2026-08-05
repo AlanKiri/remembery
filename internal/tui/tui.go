@@ -547,6 +547,19 @@ func (m *Model) createTrainer() error {
 	return err
 }
 
+func (m Model) blurPreview(password string, levelIndex int) string {
+	if password == "" {
+		return ""
+	}
+	level := m.levels[levelIndex]
+	mask, err := m.eng.Preview(level, password)
+	if err != nil {
+		return ""
+	}
+	preview := lipgloss.NewStyle().Foreground(glow.DullFuchsia).Render(mask.Blurred)
+	return "\n" + dimStyle().Render("Blur preview: ") + preview
+}
+
 func (m Model) newView() string {
 	var b strings.Builder
 	b.WriteString(renderTitle("New trainer"))
@@ -609,6 +622,7 @@ func (m Model) newView() string {
 		}
 		b.WriteString("\n")
 	}
+	b.WriteString(m.blurPreview(m.newInputs[1].Value(), m.newLevelIndex))
 
 	if m.errMsg != "" {
 		b.WriteString("\n\n")
@@ -766,6 +780,9 @@ func (m Model) editView() string {
 			b.WriteString(left)
 		}
 		b.WriteString("\n")
+	}
+	if m.editTrainer != nil {
+		b.WriteString(m.blurPreview(m.editTrainer.Password, m.editLevelIndex))
 	}
 
 	if m.errMsg != "" {
