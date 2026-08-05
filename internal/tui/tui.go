@@ -18,6 +18,26 @@ import (
 	"github.com/alankiri/password-memorizer-tui/internal/store"
 )
 
+var glow = struct {
+	Fuchsia     lipgloss.Color
+	DullFuchsia lipgloss.Color
+	Green       lipgloss.Color
+	Red         lipgloss.Color
+	Yellow      lipgloss.Color
+	Cream       lipgloss.Color
+	Dim         lipgloss.Color
+	White       lipgloss.Color
+}{
+	Fuchsia:     lipgloss.Color("#EE6FF8"),
+	DullFuchsia: lipgloss.Color("#F793FF"),
+	Green:       lipgloss.Color("#04B575"),
+	Red:         lipgloss.Color("#FF4672"),
+	Yellow:      lipgloss.Color("#ECFD65"),
+	Cream:       lipgloss.Color("#FFFDF5"),
+	Dim:         lipgloss.Color("#777777"),
+	White:       lipgloss.Color("#FFFDF5"),
+}
+
 type welcomeTickMsg struct{ t time.Time }
 
 type screen int
@@ -268,8 +288,8 @@ func (m *Model) findLevelIndex(n int) int {
 func renderTitle(text string) string {
 	return lipgloss.NewStyle().
 		Bold(true).
-		Background(lipgloss.Color("63")).
-		Foreground(lipgloss.Color("#fff")).
+		Background(glow.Fuchsia).
+		Foreground(glow.Cream).
 		Padding(0, 1).
 		Render(text)
 }
@@ -294,7 +314,7 @@ func rainbow(text string) string {
 }
 
 func dimStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
+	return lipgloss.NewStyle().Foreground(glow.Dim)
 }
 
 func (m *Model) resetNew() {
@@ -338,11 +358,11 @@ func (m Model) welcomeView() string {
 
 	title := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("63")).
+		Foreground(glow.Fuchsia).
 		Render(fmt.Sprintf("Welcome to %s", consts.AppName))
 
 	footer := fmt.Sprintf("Press %s to skip, %s to quit.\n%s",
-		rainbow("Enter"), lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("q"),
+		rainbow("Enter"), lipgloss.NewStyle().Foreground(glow.Red).Render("q"),
 		dimStyle().Render(fmt.Sprintf("Skipping in %d...", m.welcomeRemaining)))
 
 	body := lipgloss.NewStyle().
@@ -418,7 +438,7 @@ func (m Model) listView() string {
 			}
 			line := style.Render(label)
 			if m.isDue(t) {
-				line += lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(" [due]")
+				line += lipgloss.NewStyle().Foreground(glow.Red).Render(" [due]")
 			}
 			list.WriteString(line)
 			list.WriteString("\n")
@@ -426,7 +446,7 @@ func (m Model) listView() string {
 	}
 	if m.errMsg != "" {
 		list.WriteString("\n")
-		list.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("error: " + m.errMsg))
+		list.WriteString(lipgloss.NewStyle().Foreground(glow.Red).Render("error: " + m.errMsg))
 	}
 
 	title := renderTitle("passmem")
@@ -553,7 +573,7 @@ func (m Model) newView() string {
 	if m.newFocus == 2 {
 		b.WriteString(lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("63")).
+			Foreground(glow.Fuchsia).
 			Render("> Familiarity level (j/k to select)"))
 	} else {
 		b.WriteString(dimStyle().Render("  Familiarity level"))
@@ -580,7 +600,7 @@ func (m Model) newView() string {
 		}
 		if i == m.newLevelIndex {
 			right := lipgloss.NewStyle().
-				Foreground(lipgloss.Color("250")).
+				Foreground(glow.Dim).
 				Width(descWidth).
 				Render(l.Description)
 			b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, left, "  ", right))
@@ -592,7 +612,7 @@ func (m Model) newView() string {
 
 	if m.errMsg != "" {
 		b.WriteString("\n\n")
-		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("error: " + m.errMsg))
+		b.WriteString(lipgloss.NewStyle().Foreground(glow.Red).Render("error: " + m.errMsg))
 	}
 
 	body := strings.TrimSuffix(b.String(), "\n")
@@ -710,7 +730,7 @@ func (m Model) editView() string {
 	if m.editFocus == 1 {
 		b.WriteString(lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("63")).
+			Foreground(glow.Fuchsia).
 			Render("> Familiarity level (j/k to select)"))
 	} else {
 		b.WriteString(dimStyle().Render("  Familiarity level"))
@@ -738,7 +758,7 @@ func (m Model) editView() string {
 		}
 		if i == m.editLevelIndex {
 			right := lipgloss.NewStyle().
-				Foreground(lipgloss.Color("250")).
+				Foreground(glow.Dim).
 				Width(descWidth).
 				Render(l.Description)
 			b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, left, "  ", right))
@@ -750,7 +770,7 @@ func (m Model) editView() string {
 
 	if m.errMsg != "" {
 		b.WriteString("\n\n")
-		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("error: " + m.errMsg))
+		b.WriteString(lipgloss.NewStyle().Foreground(glow.Red).Render("error: " + m.errMsg))
 	}
 
 	body := strings.TrimSuffix(b.String(), "\n")
@@ -784,7 +804,7 @@ func (m Model) updateEarlyTrain(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) earlyView() string {
 	label := m.earlyTrainer.Label
-	red := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+	red := lipgloss.NewStyle().Foreground(glow.Red)
 
 	var dueIn string
 	if m.earlyTrainer.NextDue != nil {

@@ -196,15 +196,15 @@ func (m Model) trainView() string {
 
 	if m.delaying {
 		msg := fmt.Sprintf("Correct! Next attempt in %d...\n\nA beep will be played once the timer ends.", m.countdown)
-		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("250")).Render(msg))
+		b.WriteString(lipgloss.NewStyle().Foreground(glow.Dim).Render(msg))
 		return b.String()
 	}
 
 	promptText := m.mask.Blurred
-	promptColor := "213"
+	promptColor := glow.Fuchsia
 	if m.hint {
 		promptText = string(m.mask.Password)
-		promptColor = "226"
+		promptColor = glow.Yellow
 	}
 
 	inputRunes := []rune(m.input)
@@ -217,23 +217,23 @@ func (m Model) trainView() string {
 	}
 	leftPad := 1
 	arrow := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("255")).
+		Foreground(glow.White).
 		Render(strings.Repeat(" ", leftPad+pos) + "▼")
 
 	b.WriteString(arrow)
 	b.WriteString("\n")
 	b.WriteString(lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color(promptColor)).
+		Foreground(promptColor).
 		Padding(0, 0, 0, leftPad).
 		Render(promptText))
 	b.WriteString("\n\n")
 
-	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("250")).Render("Input: " + m.input))
+	b.WriteString(lipgloss.NewStyle().Foreground(glow.Dim).Render("Input: " + m.input))
 	b.WriteString("\n\n")
 
 	status := fmt.Sprintf("typed: %d / %d", len([]rune(m.input)), len(m.mask.Password))
-	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("250")).Render(status))
+	b.WriteString(lipgloss.NewStyle().Foreground(glow.Dim).Render(status))
 
 	body := strings.TrimSuffix(b.String(), "\n")
 	footer := dimStyle().Render("type • Enter: submit • Backspace: remove • Ctrl+H: toggle hint • Esc: quit")
