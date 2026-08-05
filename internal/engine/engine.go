@@ -30,11 +30,11 @@ func (e *Engine) LevelConfig(n int) (levels.Level, bool) {
 }
 
 type Mask struct {
-	Hidden    map[int]bool
-	Revealed  []rune
-	Blurred   string
-	Level     levels.Level
-	Password  []rune
+	Hidden   map[int]bool
+	Revealed []rune
+	Blurred  string
+	Level    levels.Level
+	Password []rune
 }
 
 func (e *Engine) MaskFor(trainer *store.Trainer) (Mask, error) {
