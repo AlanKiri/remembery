@@ -12,6 +12,7 @@ import (
 
 	"github.com/alankiri/password-memorizer-tui/internal/beep"
 	"github.com/alankiri/password-memorizer-tui/internal/config"
+	"github.com/alankiri/password-memorizer-tui/internal/consts"
 	"github.com/alankiri/password-memorizer-tui/internal/engine"
 	"github.com/alankiri/password-memorizer-tui/internal/levels"
 	"github.com/alankiri/password-memorizer-tui/internal/store"
@@ -329,16 +330,16 @@ func (m Model) welcomeView() string {
 
 	w, h := m.width, m.height
 	if w == 0 {
-		w = 80
+		w = consts.DefaultTermWidth
 	}
 	if h == 0 {
-		h = 24
+		h = consts.DefaultTermHeight
 	}
 
 	title := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("63")).
-		Render("Welcome to passmem")
+		Render(fmt.Sprintf("Welcome to %s", consts.AppName))
 
 	footer := fmt.Sprintf("Press %s to skip, %s to quit.\n%s",
 		rainbow("Enter"), lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("q"),
