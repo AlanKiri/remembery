@@ -1,13 +1,17 @@
 package store
 
 import (
+	"crypto/rand"
 	"database/sql"
+	"encoding/base64"
 	"errors"
+	"os"
 	"time"
 
 	_ "modernc.org/sqlite"
 
 	"github.com/alankiri/password-memorizer-tui/internal/paths"
+	"github.com/alankiri/password-memorizer-tui/internal/vault"
 )
 
 type Trainer struct {
@@ -33,7 +37,8 @@ type Session struct {
 }
 
 type DB struct {
-	db *sql.DB
+	db    *sql.DB
+	vault *vault.Vault
 }
 
 func New() (*DB, error) {
@@ -50,6 +55,220 @@ func New() (*DB, error) {
 		return nil, err
 	}
 	return st, nil
+}
+
+func (st *DB) VaultExists() (bool, error) {
+	var n int
+	if err := st.db.QueryRow("SELECT COUNT(*) FROM vault").Scan(&n); err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+func (st *DB) SetVault(v *vault.Vault) {
+	st.vault = v
+}
+
+func (st *DB) HasVault() bool {
+	return st.vault != nil
+}
+
+func (st *DB) ChangeVault(newPassword string) (*vault.Vault, error) {
+	if st.vault == nil {
+		return nil, errors.New("no active vault")
+	}
+	oldV := st.vault
+	rows, err := st.db.Query("SELECT id, password FROM trainers")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	type pair struct {
+		id     int64
+		cipher string
+		plain  string
+	}
+	var reencrypt []pair
+	for rows.Next() {
+		var id int64
+		var cipher string
+		if err := rows.Scan(&id, &cipher); err != nil {
+			return nil, err
+		}
+		plain, err := oldV.Decrypt(cipher)
+		if err != nil {
+			return nil, err
+		}
+		reencrypt = append(reencrypt, pair{id: id, plain: plain})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	newV, err := st.createVaultOnly(newPassword)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range reencrypt {
+		cipher, err := newV.Encrypt(p.plain)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := st.db.Exec("UPDATE trainers SET password = ? WHERE id = ?", cipher, p.id); err != nil {
+			return nil, err
+		}
+	}
+	st.vault = newV
+	return newV, nil
+}
+
+func (st *DB) createVaultOnly(password string) (*vault.Vault, error) {
+	salt := make([]byte, 16)
+	if _, err := rand.Read(salt); err != nil {
+		return nil, err
+	}
+	key, err := vault.DeriveKey(password, salt)
+	if err != nil {
+		return nil, err
+	}
+	v := vault.New(key)
+	canary, err := v.Encrypt(vault.Canary)
+	if err != nil {
+		return nil, err
+	}
+	saltB64 := base64.StdEncoding.EncodeToString(salt)
+	if _, err := st.db.Exec("DELETE FROM vault"); err != nil {
+		return nil, err
+	}
+	if _, err := st.db.Exec("INSERT INTO vault (salt, canary) VALUES (?, ?)", saltB64, canary); err != nil {
+		return nil, err
+	}
+	return v, nil
+}
+
+func (st *DB) DecryptVault() error {
+	if st.vault == nil {
+		return errors.New("no active vault")
+	}
+	rows, err := st.db.Query("SELECT id, password FROM trainers")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	type pair struct {
+		id    int64
+		plain string
+	}
+	var updates []pair
+	for rows.Next() {
+		var id int64
+		var cipher string
+		if err := rows.Scan(&id, &cipher); err != nil {
+			return err
+		}
+		plain, err := st.vault.Decrypt(cipher)
+		if err != nil {
+			return err
+		}
+		updates = append(updates, pair{id, plain})
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, u := range updates {
+		if _, err := st.db.Exec("UPDATE trainers SET password = ? WHERE id = ?", u.plain, u.id); err != nil {
+			return err
+		}
+	}
+	if _, err := st.db.Exec("DELETE FROM vault"); err != nil {
+		return err
+	}
+	st.vault = nil
+	return nil
+}
+
+func (st *DB) CreateVaultAndEncrypt(password string) (*vault.Vault, error) {
+	v, err := st.CreateVault(password)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := st.db.Query("SELECT id, password FROM trainers")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	type pair struct {
+		id     int64
+		cipher string
+	}
+	var updates []pair
+	for rows.Next() {
+		var id int64
+		var plain string
+		if err := rows.Scan(&id, &plain); err != nil {
+			return nil, err
+		}
+		cipher, err := v.Encrypt(plain)
+		if err != nil {
+			return nil, err
+		}
+		updates = append(updates, pair{id, cipher})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for _, u := range updates {
+		if _, err := st.db.Exec("UPDATE trainers SET password = ? WHERE id = ?", u.cipher, u.id); err != nil {
+			return nil, err
+		}
+	}
+	return v, nil
+}
+
+func (st *DB) CreateVault(password string) (*vault.Vault, error) {
+	salt := make([]byte, 16)
+	if _, err := rand.Read(salt); err != nil {
+		return nil, err
+	}
+	key, err := vault.DeriveKey(password, salt)
+	if err != nil {
+		return nil, err
+	}
+	v := vault.New(key)
+	canary, err := v.Encrypt(vault.Canary)
+	if err != nil {
+		return nil, err
+	}
+	saltB64 := base64.StdEncoding.EncodeToString(salt)
+	if _, err := st.db.Exec("INSERT INTO vault (salt, canary) VALUES (?, ?)", saltB64, canary); err != nil {
+		return nil, err
+	}
+	st.vault = v
+	return v, nil
+}
+
+func (st *DB) LoadVault(password string) (*vault.Vault, error) {
+	var saltB64, canary string
+	if err := st.db.QueryRow("SELECT salt, canary FROM vault LIMIT 1").Scan(&saltB64, &canary); err != nil {
+		return nil, err
+	}
+	salt, err := base64.StdEncoding.DecodeString(saltB64)
+	if err != nil {
+		return nil, err
+	}
+	key, err := vault.DeriveKey(password, salt)
+	if err != nil {
+		return nil, err
+	}
+	v := vault.New(key)
+	if !v.Verify(canary) {
+		return nil, errors.New("incorrect master password")
+	}
+	st.vault = v
+	return v, nil
 }
 
 func (st *DB) migrate() error {
@@ -76,6 +295,11 @@ CREATE TABLE IF NOT EXISTS sessions (
     successful INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (trainer_id) REFERENCES trainers(id) ON DELETE CASCADE
 );
+
+    CREATE TABLE IF NOT EXISTS vault (
+        salt TEXT NOT NULL,
+        canary TEXT NOT NULL
+    );
 `
 	if _, err := st.db.Exec(schema); err != nil {
 		return err
@@ -130,7 +354,21 @@ func (st *DB) Close() error {
 	return st.db.Close()
 }
 
+func (st *DB) Reset() error {
+	if err := st.Close(); err != nil {
+		return err
+	}
+	return os.Remove(paths.DBFile())
+}
+
 func (st *DB) CreateTrainer(label, password string, level int) (int64, error) {
+	if st.vault != nil {
+		cipher, err := st.vault.Encrypt(password)
+		if err != nil {
+			return 0, err
+		}
+		password = cipher
+	}
 	now := time.Now().Unix()
 	res, err := st.db.Exec(
 		"INSERT INTO trainers (label, password, level, last_reset_date, created_at) VALUES (?, ?, ?, ?, ?)",
@@ -146,7 +384,7 @@ func (st *DB) GetTrainer(id int64) (Trainer, error) {
 	row := st.db.QueryRow(`
 		SELECT id, label, password, level, sessions_at_level, total_sessions, last_counted_session, last_reset_date, created_at
 		FROM trainers WHERE id = ?`, id)
-	return scanTrainer(row)
+	return st.scanTrainer(row)
 }
 
 func (st *DB) ListTrainers() ([]Trainer, error) {
@@ -160,7 +398,7 @@ func (st *DB) ListTrainers() ([]Trainer, error) {
 
 	var trainers []Trainer
 	for rows.Next() {
-		t, err := scanTrainer(rows)
+		t, err := st.scanTrainer(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -175,6 +413,14 @@ func (st *DB) DeleteTrainer(id int64) error {
 }
 
 func (st *DB) UpdateTrainer(t Trainer) error {
+	password := t.Password
+	if st.vault != nil {
+		cipher, err := st.vault.Encrypt(t.Password)
+		if err != nil {
+			return err
+		}
+		password = cipher
+	}
 	var lastCounted sql.NullInt64
 	if t.LastCountedSession != nil {
 		lastCounted = sql.NullInt64{Int64: t.LastCountedSession.Unix(), Valid: true}
@@ -182,7 +428,7 @@ func (st *DB) UpdateTrainer(t Trainer) error {
 	_, err := st.db.Exec(`
 		UPDATE trainers SET label = ?, password = ?, level = ?, sessions_at_level = ?,
 		total_sessions = ?, last_counted_session = ?, last_reset_date = ? WHERE id = ?`,
-		t.Label, t.Password, t.Level, t.SessionsAtLevel, t.TotalSessions, lastCounted, t.LastResetDate.Unix(), t.ID)
+		t.Label, password, t.Level, t.SessionsAtLevel, t.TotalSessions, lastCounted, t.LastResetDate.Unix(), t.ID)
 	return err
 }
 
@@ -229,7 +475,7 @@ type scanner interface {
 	Scan(dest ...any) error
 }
 
-func scanTrainer(s scanner) (Trainer, error) {
+func (st *DB) scanTrainer(s scanner) (Trainer, error) {
 	var t Trainer
 	var lastCounted sql.NullInt64
 	var lastReset, createdAt int64
@@ -239,6 +485,13 @@ func scanTrainer(s scanner) (Trainer, error) {
 			return t, err
 		}
 		return t, err
+	}
+	if st.vault != nil {
+		plain, err := st.vault.Decrypt(t.Password)
+		if err != nil {
+			return t, err
+		}
+		t.Password = plain
 	}
 	if lastCounted.Valid {
 		d := time.Unix(lastCounted.Int64, 0)
