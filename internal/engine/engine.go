@@ -122,6 +122,8 @@ func (e *Engine) CanAdvance(trainer *store.Trainer) (bool, int) {
 	return true, next
 }
 
+const graceWindow = 6 * time.Hour
+
 func (e *Engine) AdvanceIfReady(trainer *store.Trainer) (advanced bool) {
 	can, next := e.CanAdvance(trainer)
 	if !can {
@@ -129,22 +131,57 @@ func (e *Engine) AdvanceIfReady(trainer *store.Trainer) (advanced bool) {
 	}
 	trainer.Level = next
 	trainer.SessionsAtLevel = 0
+	trainer.LastCountedSession = nil
+	trainer.LastResetDate = time.Now()
 	return true
 }
 
-func (e *Engine) RecordSession(trainer *store.Trainer, start time.Time, successful bool, repetitions, errors int) error {
-	level, ok := e.LevelConfig(trainer.Level)
-	if !ok {
+func (e *Engine) RecordSession(trainer *store.Trainer, completedAt time.Time, successful bool, repetitions, errors int) error {
+	if _, ok := e.LevelConfig(trainer.Level); !ok {
 		return fmt.Errorf("unknown level %d", trainer.Level)
 	}
 
 	trainer.TotalSessions++
 	if successful {
 		trainer.SessionsAtLevel++
-		next := start.Add(time.Duration(level.SessionIntervalDays) * 24 * time.Hour)
-		trainer.NextDue = &next
+		trainer.LastCountedSession = &completedAt
 	}
 	return nil
+}
+
+// Schedule returns the current schedule for a trainer.
+// A newly created or reset trainer is available immediately; the interval
+// only applies after a counted session has been recorded.
+func (e *Engine) Schedule(t store.Trainer) (availableAt, dueAt time.Time, status string, canCount bool) {
+	level, ok := e.LevelConfig(t.Level)
+	if !ok {
+		status = "unknown"
+		return
+	}
+
+	now := time.Now()
+	if t.LastCountedSession != nil {
+		availableAt = t.LastCountedSession.Add(time.Duration(level.SessionIntervalHours) * time.Hour)
+	} else {
+		availableAt = t.LastResetDate
+	}
+	dueAt = availableAt.Add(graceWindow)
+
+	switch {
+	case now.Before(availableAt):
+		return availableAt, dueAt, "resting", false
+	case now.Before(dueAt):
+		return availableAt, dueAt, "available", true
+	default:
+		return availableAt, dueAt, "due", true
+	}
+}
+
+// Availability returns the current schedule state for a trainer.
+// canCount is true during the available and due windows.
+func (e *Engine) Availability(t store.Trainer) (status string, canCount bool) {
+	_, _, status, canCount = e.Schedule(t)
+	return
 }
 
 func (e *Engine) HiddenPositions(mask Mask) []int {

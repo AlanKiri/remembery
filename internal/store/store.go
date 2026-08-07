@@ -11,14 +11,15 @@ import (
 )
 
 type Trainer struct {
-	ID              int64
-	Label           string
-	Password        string
-	Level           int
-	SessionsAtLevel int
-	TotalSessions   int
-	NextDue         *time.Time
-	CreatedAt       time.Time
+	ID                 int64
+	Label              string
+	Password           string
+	Level              int
+	SessionsAtLevel    int
+	TotalSessions      int
+	LastCountedSession *time.Time
+	LastResetDate      time.Time
+	CreatedAt          time.Time
 }
 
 type Session struct {
@@ -60,7 +61,8 @@ CREATE TABLE IF NOT EXISTS trainers (
     level INTEGER NOT NULL DEFAULT 1,
     sessions_at_level INTEGER NOT NULL DEFAULT 0,
     total_sessions INTEGER NOT NULL DEFAULT 0,
-    next_due INTEGER,
+    last_counted_session INTEGER,
+    last_reset_date INTEGER NOT NULL DEFAULT (strftime('%s','now')),
     created_at INTEGER NOT NULL
 );
 
@@ -75,8 +77,53 @@ CREATE TABLE IF NOT EXISTS sessions (
     FOREIGN KEY (trainer_id) REFERENCES trainers(id) ON DELETE CASCADE
 );
 `
-	_, err := st.db.Exec(schema)
-	return err
+	if _, err := st.db.Exec(schema); err != nil {
+		return err
+	}
+	return st.migrateTrainerColumns()
+}
+
+func (st *DB) migrateTrainerColumns() error {
+	rows, err := st.db.Query("PRAGMA table_info(trainers)")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	var name string
+	var hasLastCounted, hasLastReset bool
+	for rows.Next() {
+		var cid, notnull, pk int
+		var tp string
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &tp, &notnull, &dflt, &pk); err != nil {
+			return err
+		}
+		switch name {
+		case "last_counted_session":
+			hasLastCounted = true
+		case "last_reset_date":
+			hasLastReset = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	if !hasLastCounted {
+		if _, err := st.db.Exec("ALTER TABLE trainers ADD COLUMN last_counted_session INTEGER"); err != nil {
+			return err
+		}
+	}
+	if !hasLastReset {
+		if _, err := st.db.Exec("ALTER TABLE trainers ADD COLUMN last_reset_date INTEGER NOT NULL DEFAULT (strftime('%s','now'))"); err != nil {
+			return err
+		}
+		if _, err := st.db.Exec("UPDATE trainers SET last_reset_date = created_at WHERE last_reset_date IS NULL OR last_reset_date = 0"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (st *DB) Close() error {
@@ -86,8 +133,8 @@ func (st *DB) Close() error {
 func (st *DB) CreateTrainer(label, password string, level int) (int64, error) {
 	now := time.Now().Unix()
 	res, err := st.db.Exec(
-		"INSERT INTO trainers (label, password, level, created_at) VALUES (?, ?, ?, ?)",
-		label, password, level, now,
+		"INSERT INTO trainers (label, password, level, last_reset_date, created_at) VALUES (?, ?, ?, ?, ?)",
+		label, password, level, now, now,
 	)
 	if err != nil {
 		return 0, err
@@ -97,14 +144,14 @@ func (st *DB) CreateTrainer(label, password string, level int) (int64, error) {
 
 func (st *DB) GetTrainer(id int64) (Trainer, error) {
 	row := st.db.QueryRow(`
-		SELECT id, label, password, level, sessions_at_level, total_sessions, next_due, created_at
+		SELECT id, label, password, level, sessions_at_level, total_sessions, last_counted_session, last_reset_date, created_at
 		FROM trainers WHERE id = ?`, id)
 	return scanTrainer(row)
 }
 
 func (st *DB) ListTrainers() ([]Trainer, error) {
 	rows, err := st.db.Query(`
-		SELECT id, label, password, level, sessions_at_level, total_sessions, next_due, created_at
+		SELECT id, label, password, level, sessions_at_level, total_sessions, last_counted_session, last_reset_date, created_at
 		FROM trainers ORDER BY id`)
 	if err != nil {
 		return nil, err
@@ -128,37 +175,15 @@ func (st *DB) DeleteTrainer(id int64) error {
 }
 
 func (st *DB) UpdateTrainer(t Trainer) error {
-	var nextDue sql.NullInt64
-	if t.NextDue != nil {
-		nextDue = sql.NullInt64{Int64: t.NextDue.Unix(), Valid: true}
+	var lastCounted sql.NullInt64
+	if t.LastCountedSession != nil {
+		lastCounted = sql.NullInt64{Int64: t.LastCountedSession.Unix(), Valid: true}
 	}
 	_, err := st.db.Exec(`
 		UPDATE trainers SET label = ?, password = ?, level = ?, sessions_at_level = ?,
-		total_sessions = ?, next_due = ? WHERE id = ?`,
-		t.Label, t.Password, t.Level, t.SessionsAtLevel, t.TotalSessions, nextDue, t.ID)
+		total_sessions = ?, last_counted_session = ?, last_reset_date = ? WHERE id = ?`,
+		t.Label, t.Password, t.Level, t.SessionsAtLevel, t.TotalSessions, lastCounted, t.LastResetDate.Unix(), t.ID)
 	return err
-}
-
-func (st *DB) ListTrainersDueBefore(t time.Time) ([]Trainer, error) {
-	rows, err := st.db.Query(`
-		SELECT id, label, password, level, sessions_at_level, total_sessions, next_due, created_at
-		FROM trainers
-		WHERE next_due IS NULL OR next_due <= ?
-		ORDER BY next_due IS NULL DESC, next_due ASC, id`, t.Unix())
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var trainers []Trainer
-	for rows.Next() {
-		tr, err := scanTrainer(rows)
-		if err != nil {
-			return nil, err
-		}
-		trainers = append(trainers, tr)
-	}
-	return trainers, rows.Err()
 }
 
 func (st *DB) CreateSession(s Session) (int64, error) {
@@ -206,19 +231,20 @@ type scanner interface {
 
 func scanTrainer(s scanner) (Trainer, error) {
 	var t Trainer
-	var nextDue sql.NullInt64
-	var createdAt int64
-	err := s.Scan(&t.ID, &t.Label, &t.Password, &t.Level, &t.SessionsAtLevel, &t.TotalSessions, &nextDue, &createdAt)
+	var lastCounted sql.NullInt64
+	var lastReset, createdAt int64
+	err := s.Scan(&t.ID, &t.Label, &t.Password, &t.Level, &t.SessionsAtLevel, &t.TotalSessions, &lastCounted, &lastReset, &createdAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return t, err
 		}
 		return t, err
 	}
-	if nextDue.Valid {
-		d := time.Unix(nextDue.Int64, 0)
-		t.NextDue = &d
+	if lastCounted.Valid {
+		d := time.Unix(lastCounted.Int64, 0)
+		t.LastCountedSession = &d
 	}
+	t.LastResetDate = time.Unix(lastReset, 0)
 	t.CreatedAt = time.Unix(createdAt, 0)
 	return t, nil
 }
