@@ -96,7 +96,7 @@ func (m *Model) finishSession() {
 
 	if m.counts {
 		now := time.Now()
-		if err := m.eng.RecordSession(m.trainer, m.tStart, true, m.attempt, m.tErrors); err != nil {
+		if err := m.eng.RecordSession(m.trainer, now, true, m.attempt, m.tErrors); err != nil {
 			m.errMsg = err.Error()
 			m.screen = screenList
 			return
@@ -123,9 +123,8 @@ func (m *Model) finishSession() {
 
 		b.WriteString(fmt.Sprintf("Repetitions: %d\nErrors: %d\nTotal sessions: %d\n",
 			m.attempt, m.tErrors, m.trainer.TotalSessions))
-		if m.trainer.NextDue != nil {
-			b.WriteString(fmt.Sprintf("Next review: %s\n", m.trainer.NextDue.Format("2006-01-02 15:04")))
-		}
+		nextAvailable := now.Add(time.Duration(m.mask.Level.SessionIntervalHours) * time.Hour)
+		b.WriteString(fmt.Sprintf("Next available in %s\n", formatDuration(time.Until(nextAvailable))))
 
 		can, next := m.eng.CanAdvance(m.trainer)
 		if can {
@@ -134,7 +133,7 @@ func (m *Model) finishSession() {
 			b.WriteString(fmt.Sprintf("\nYou are ready to advance to level %d!", next))
 		}
 	} else {
-		b.WriteString("Practice complete.\nNo progress was recorded because this trainer is not due yet.")
+		b.WriteString("Practice complete.\nNo progress was recorded because this trainer is not available yet.")
 	}
 
 	m.congrats = b.String()
@@ -167,8 +166,7 @@ func (m *Model) updateTrainTick(msg tickMsg) (tea.Model, tea.Cmd) {
 func (m *Model) updateLevel(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	s := msg.String()
 	if s == "y" {
-		m.levelTrainer.Level = m.levelOffer
-		m.levelTrainer.SessionsAtLevel = 0
+		m.eng.AdvanceIfReady(m.levelTrainer)
 		if err := m.db.UpdateTrainer(*m.levelTrainer); err != nil {
 			m.errMsg = err.Error()
 		}

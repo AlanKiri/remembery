@@ -21,6 +21,7 @@ import (
 var glow = struct {
 	Fuchsia     lipgloss.Color
 	DullFuchsia lipgloss.Color
+	LightBlue   lipgloss.Color
 	Green       lipgloss.Color
 	Red         lipgloss.Color
 	Yellow      lipgloss.Color
@@ -30,6 +31,7 @@ var glow = struct {
 }{
 	Fuchsia:     lipgloss.Color("#EE6FF8"),
 	DullFuchsia: lipgloss.Color("#F793FF"),
+	LightBlue:   lipgloss.Color("#8BE9FD"),
 	Green:       lipgloss.Color("#04B575"),
 	Red:         lipgloss.Color("#FF4672"),
 	Yellow:      lipgloss.Color("#ECFD65"),
@@ -261,10 +263,13 @@ func (m *Model) loadTrainers() {
 }
 
 func (m *Model) isDue(t store.Trainer) bool {
-	if t.NextDue == nil {
-		return true
-	}
-	return !t.NextDue.After(time.Now())
+	status, _ := m.eng.Availability(t)
+	return status == "due"
+}
+
+func (m *Model) canCount(t store.Trainer) bool {
+	_, canCount := m.eng.Availability(t)
+	return canCount
 }
 
 func (m *Model) levelColor(n int) string {
@@ -285,10 +290,14 @@ func (m *Model) findLevelIndex(n int) int {
 	return 0
 }
 
-func renderTitle(text string) string {
+func renderTitle(text string, bg ...lipgloss.Color) string {
+	c := glow.Fuchsia
+	if len(bg) > 0 {
+		c = bg[0]
+	}
 	return lipgloss.NewStyle().
 		Bold(true).
-		Background(glow.Fuchsia).
+		Background(c).
 		Foreground(glow.Cream).
 		Padding(0, 1).
 		Render(text)
@@ -396,7 +405,7 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		if len(m.trainers) > 0 {
 			t := &m.trainers[m.cursor]
-			if m.isDue(*t) {
+			if m.canCount(*t) {
 				m.startTraining(t, true)
 			} else {
 				m.earlyTrainer = t
@@ -450,7 +459,11 @@ func (m Model) listView() string {
 	}
 
 	title := renderTitle("passmem")
-	body := title + "\n\n" + list.String()
+	var right string
+	if len(m.trainers) > 0 {
+		right = strings.Repeat("\n", m.cursor) + m.trainerDetailsView(m.trainers[m.cursor])
+	}
+	body := title + "\n\n" + lipgloss.JoinHorizontal(lipgloss.Top, list.String(), "  ", right)
 
 	footer := dimStyle().Render("n: new  e: edit  d: delete  r: refresh  enter: train  q: quit")
 
@@ -821,19 +834,34 @@ func (m Model) updateEarlyTrain(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) earlyView() string {
 	label := m.earlyTrainer.Label
-	red := lipgloss.NewStyle().Foreground(glow.Red)
 
-	var dueIn string
-	if m.earlyTrainer.NextDue != nil {
-		d := time.Until(*m.earlyTrainer.NextDue)
-		if d > 0 {
-			dueIn = fmt.Sprintf("Due again in %s", formatDuration(d))
-		}
+	availableAt, _, _, _ := m.eng.Schedule(*m.earlyTrainer)
+	var availableIn string
+	d := time.Until(availableAt)
+	if d > 0 {
+		availableIn = dimStyle().Render(fmt.Sprintf("Available in %s", formatDuration(d)))
 	}
 
-	body := fmt.Sprintf("%q is not %s yet.\n\n%s\n\nPracticing now will not count toward progress.\n\n[y]es, practice anyway / [n]o, go back",
-		label, red.Render("due"), dueIn)
-	return renderTitle("Not due yet") + "\n\n" + body
+	raw := "A counted session was completed recently. You need to wait for the interval to pass before the next session counts. You can still practice, but it will not affect progress."
+	wrap := 40
+	if m.width > 0 && m.width < wrap+10 {
+		wrap = m.width - 10
+	}
+	if wrap < 30 {
+		wrap = 30
+	}
+	explanation := wrapWords(raw, wrap)
+
+	resting := lipgloss.NewStyle().Foreground(glow.LightBlue).Render("resting")
+	yesLine := lipgloss.NewStyle().Foreground(glow.Green).Render("[y]es — practice anyway")
+	noLine := lipgloss.NewStyle().Foreground(glow.Red).Render("[n]o — go back")
+
+	body := fmt.Sprintf("%s is %s right now which means that %s\n\n%s\n\n%s\n%s",
+		label, resting, explanation,
+		availableIn,
+		yesLine,
+		noLine)
+	return renderTitle("Not available yet") + "\n\n" + body
 }
 
 func formatDuration(d time.Duration) string {
@@ -843,6 +871,28 @@ func formatDuration(d time.Duration) string {
 		return fmt.Sprintf("%dh %dm", h, m)
 	}
 	return fmt.Sprintf("%dm", m)
+}
+
+func wrapWords(text string, width int) string {
+	words := strings.Fields(text)
+	var b strings.Builder
+	var line string
+	for _, w := range words {
+		if line != "" && len(line)+1+len(w) > width {
+			b.WriteString(line)
+			b.WriteString("\n")
+			line = w
+		} else {
+			if line != "" {
+				line += " "
+			}
+			line += w
+		}
+	}
+	if line != "" {
+		b.WriteString(line)
+	}
+	return b.String()
 }
 
 func (m Model) updateDelete(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -881,6 +931,69 @@ func (m Model) updateCongrats(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) congratsView() string {
 	return renderTitle("Session complete") + "\n\n" + m.congrats + "\n\nPress any key to continue."
+}
+
+func (m Model) trainerDetailsView(t store.Trainer) string {
+	level, ok := m.eng.LevelConfig(t.Level)
+	if !ok {
+		return "unknown level"
+	}
+
+	needed := level.RequiredSessionsToProgress - t.SessionsAtLevel
+	if needed < 0 {
+		needed = 0
+	}
+
+	availableAt, dueAt, status, _ := m.eng.Schedule(t)
+	now := time.Now()
+
+	var availableLine, dueLine string
+	if availableAt.After(now) {
+		availableLine = fmt.Sprintf("Available in %s", formatDuration(availableAt.Sub(now)))
+	} else {
+		availableLine = "Available now"
+	}
+	if dueAt.After(now) {
+		dueLine = fmt.Sprintf("Due in %s", formatDuration(dueAt.Sub(now)))
+	} else {
+		dueLine = fmt.Sprintf("Overdue by %s", formatDuration(now.Sub(dueAt)))
+	}
+
+	statusText := status
+	switch status {
+	case "resting":
+		statusText = lipgloss.NewStyle().Foreground(glow.LightBlue).Render(status)
+	case "available":
+		statusText = lipgloss.NewStyle().Foreground(glow.Green).Render(status)
+	case "due":
+		statusText = lipgloss.NewStyle().Foreground(glow.Red).Render(status)
+	}
+
+	sessions := fmt.Sprintf("Sessions at level: %d / %d", t.SessionsAtLevel, level.RequiredSessionsToProgress) +
+		dimStyle().Render(fmt.Sprintf("  (%d to progress)", needed))
+
+	lines := []string{
+		lipgloss.NewStyle().
+			Foreground(lipgloss.Color(level.Color)).
+			Bold(true).
+			Render(fmt.Sprintf("Familiarity level %d", t.Level)),
+		sessions,
+		availableLine,
+	}
+	if status != "resting" {
+		lines = append(lines, dueLine)
+	}
+	lines = append(lines,
+		fmt.Sprintf("Status: %s", statusText),
+		dimStyle().Render(fmt.Sprintf("Total sessions: %d", t.TotalSessions)),
+		dimStyle().Render(fmt.Sprintf("Created: %s", t.CreatedAt.Format("2006-01-02"))),
+	)
+
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(glow.Fuchsia).
+		Padding(1, 2).
+		Render(renderTitle(t.Label, glow.Red) + "\n\n" + strings.Join(lines, "\n"))
 }
 
 func (m *Model) startTraining(t *store.Trainer, counts bool) {
