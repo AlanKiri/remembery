@@ -18,7 +18,7 @@ type Level struct {
 	MaxBlurPercent             int    `yaml:"max_blur_percent"`
 	HintReductionPercent       int    `yaml:"hint_reduction_percent"`
 	RequiredSessionsToProgress int    `yaml:"required_sessions_to_progress"`
-	SessionIntervalDays        int    `yaml:"session_interval_days"`
+	SessionIntervalHours       int    `yaml:"session_interval_hours"`
 	TypingValidationMode       string `yaml:"typing_validation_mode"`
 	Description                string `yaml:"description"`
 }
