@@ -54,6 +54,19 @@ const (
 	screenTrain
 	screenCongrats
 	screenLevel
+	screenEnableVault
+)
+
+type vaultStep int
+
+const (
+	vaultStepWarn vaultStep = iota
+	vaultStepPassword
+	vaultStepConfirm
+	vaultStepMenu
+	vaultStepChangePassword
+	vaultStepChangeConfirm
+	vaultStepDecryptWarn
 )
 
 type Model struct {
@@ -109,6 +122,13 @@ type Model struct {
 	// level offer
 	levelTrainer *store.Trainer
 	levelOffer   int
+
+	// enable vault
+	vaultStep    vaultStep
+	vaultPw      textinput.Model
+	vaultConfirm textinput.Model
+	vaultShowPw  bool
+	vaultErrMsg  string
 }
 
 func Run() error {
@@ -120,14 +140,48 @@ func Run() error {
 	if err != nil {
 		return err
 	}
-	db, err := store.New()
-	if err != nil {
+	for {
+		db, err := store.New()
+		if err != nil {
+			return err
+		}
+		exists, err := db.VaultExists()
+		if err != nil {
+			return err
+		}
+		// If the user already dismissed the initial encryption prompt,
+		// start without a vault and do not ask again.
+		if !exists && cfg.PromptedForVault {
+			m := New(db, cfg, lvl)
+			p := tea.NewProgram(m, tea.WithAltScreen())
+			_, err = p.Run()
+			return err
+		}
+		uModel := newUnlockModel(db, !exists)
+		pUnlock := tea.NewProgram(uModel, tea.WithAltScreen())
+		final, err := pUnlock.Run()
+		if err != nil {
+			return err
+		}
+		um := final.(unlockModel)
+		if um.reset {
+			continue
+		}
+		if !um.skipped && um.result == nil {
+			return errors.New("vault not unlocked")
+		}
+		if !um.skipped {
+			db.SetVault(um.result)
+		}
+		cfg.PromptedForVault = true
+		if err := config.Save(cfg); err != nil {
+			return err
+		}
+		m := New(db, cfg, lvl)
+		p := tea.NewProgram(m, tea.WithAltScreen())
+		_, err = p.Run()
 		return err
 	}
-	m := New(db, cfg, lvl)
-	p := tea.NewProgram(m, tea.WithAltScreen())
-	_, err = p.Run()
-	return err
 }
 
 func New(db *store.DB, cfg config.Config, lvl []levels.Level) Model {
@@ -148,6 +202,19 @@ func New(db *store.DB, cfg config.Config, lvl []levels.Level) Model {
 	m.newInputs[1].Placeholder = "Password"
 	m.newInputs[1].EchoMode = textinput.EchoPassword
 	m.newLevelIndex = 0
+
+	m.vaultPw = textinput.New()
+	m.vaultPw.Placeholder = "master password"
+	m.vaultPw.EchoMode = textinput.EchoPassword
+	m.vaultPw.EchoCharacter = '•'
+	m.vaultPw.CharLimit = 64
+
+	m.vaultConfirm = textinput.New()
+	m.vaultConfirm.Placeholder = "confirm password"
+	m.vaultConfirm.EchoMode = textinput.EchoPassword
+	m.vaultConfirm.EchoCharacter = '•'
+	m.vaultConfirm.CharLimit = 64
+
 	m.loadTrainers()
 	return m
 }
@@ -201,6 +268,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.screen == screenLevel {
 			return m.updateLevel(msg)
 		}
+		if m.screen == screenEnableVault {
+			return m.updateEnableVault(msg)
+		}
 	case welcomeTickMsg:
 		if m.screen != screenWelcome {
 			return m, nil
@@ -244,10 +314,228 @@ func (m Model) View() string {
 		inner = m.congratsView()
 	case screenLevel:
 		inner = m.levelView()
+	case screenEnableVault:
+		inner = m.enableVaultView()
 	default:
 		inner = "unknown screen"
 	}
 	return lipgloss.NewStyle().Padding(1, 3, 0, 3).Render(inner)
+}
+
+func (m *Model) resetEnableVault() {
+	m.vaultPw.SetValue("")
+	m.vaultConfirm.SetValue("")
+	m.vaultPw.EchoMode = textinput.EchoPassword
+	m.vaultPw.EchoCharacter = '•'
+	m.vaultConfirm.EchoMode = textinput.EchoPassword
+	m.vaultConfirm.EchoCharacter = '•'
+	m.vaultShowPw = false
+	m.vaultErrMsg = ""
+	if m.db.HasVault() {
+		m.vaultStep = vaultStepMenu
+	} else {
+		m.vaultStep = vaultStepWarn
+		m.vaultPw.Focus()
+		m.vaultConfirm.Blur()
+	}
+}
+
+func (m Model) updateEnableVault(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	s := msg.String()
+	if s == "esc" {
+		m.screen = screenList
+		return m, nil
+	}
+	if s == "ctrl+s" {
+		m.vaultShowPw = !m.vaultShowPw
+		if m.vaultShowPw {
+			m.vaultPw.EchoMode = textinput.EchoNormal
+			m.vaultConfirm.EchoMode = textinput.EchoNormal
+		} else {
+			m.vaultPw.EchoMode = textinput.EchoPassword
+			m.vaultConfirm.EchoMode = textinput.EchoPassword
+		}
+		m.vaultPw.EchoCharacter = '•'
+		m.vaultConfirm.EchoCharacter = '•'
+		return m, nil
+	}
+	switch m.vaultStep {
+	case vaultStepWarn:
+		if s == "y" {
+			m.vaultStep = vaultStepPassword
+			m.vaultPw.Focus()
+			m.vaultErrMsg = ""
+		} else if s == "n" || s == "q" {
+			m.screen = screenList
+		}
+		return m, nil
+	case vaultStepPassword:
+		if s == "enter" {
+			m.vaultStep = vaultStepConfirm
+			m.vaultConfirm.Focus()
+			m.vaultErrMsg = ""
+		}
+	case vaultStepConfirm:
+		if s == "enter" {
+			m.vaultErrMsg = ""
+			if m.vaultPw.Value() != m.vaultConfirm.Value() {
+				m.vaultErrMsg = "Passwords do not match"
+				return m, nil
+			}
+			v, err := m.db.CreateVaultAndEncrypt(m.vaultPw.Value())
+			if err != nil {
+				m.vaultErrMsg = err.Error()
+				return m, nil
+			}
+			m.db.SetVault(v)
+			m.cfg.PromptedForVault = true
+			if err := config.Save(m.cfg); err != nil {
+				m.vaultErrMsg = err.Error()
+				return m, nil
+			}
+			m.loadTrainers()
+			m.screen = screenList
+		}
+	case vaultStepMenu:
+		if s == "c" {
+			m.vaultStep = vaultStepChangePassword
+			m.vaultPw.SetValue("")
+			m.vaultConfirm.SetValue("")
+			m.vaultPw.Focus()
+			m.vaultErrMsg = ""
+		} else if s == "d" {
+			m.vaultStep = vaultStepDecryptWarn
+			m.vaultErrMsg = ""
+		} else if s == "q" {
+			m.screen = screenList
+		}
+		return m, nil
+	case vaultStepChangePassword:
+		if s == "enter" {
+			m.vaultStep = vaultStepChangeConfirm
+			m.vaultConfirm.Focus()
+			m.vaultErrMsg = ""
+		}
+	case vaultStepChangeConfirm:
+		if s == "enter" {
+			m.vaultErrMsg = ""
+			if m.vaultPw.Value() != m.vaultConfirm.Value() {
+				m.vaultErrMsg = "Passwords do not match"
+				return m, nil
+			}
+			v, err := m.db.ChangeVault(m.vaultPw.Value())
+			if err != nil {
+				m.vaultErrMsg = err.Error()
+				return m, nil
+			}
+			m.db.SetVault(v)
+			m.loadTrainers()
+			m.screen = screenList
+		}
+	case vaultStepDecryptWarn:
+		if s == "y" {
+			if err := m.db.DecryptVault(); err != nil {
+				m.vaultErrMsg = err.Error()
+				return m, nil
+			}
+			m.loadTrainers()
+			m.screen = screenList
+		} else if s == "n" || s == "q" {
+			m.vaultStep = vaultStepMenu
+			m.vaultErrMsg = ""
+		}
+		return m, nil
+	}
+	var cmd tea.Cmd
+	if m.vaultStep == vaultStepConfirm || m.vaultStep == vaultStepChangeConfirm {
+		m.vaultConfirm, cmd = m.vaultConfirm.Update(msg)
+	} else if m.vaultStep == vaultStepPassword || m.vaultStep == vaultStepChangePassword {
+		m.vaultPw, cmd = m.vaultPw.Update(msg)
+	}
+	return m, cmd
+}
+
+func (m Model) enableVaultView() string {
+	var body strings.Builder
+	var titleText string
+
+	switch m.vaultStep {
+	case vaultStepWarn:
+		titleText = "Enable vault"
+		body.WriteString(lipgloss.NewStyle().Foreground(glow.Red).Bold(true).Render("WARNING: this will encrypt all stored trainer passwords."))
+		body.WriteString("\n\n")
+		body.WriteString("Once enabled, you will need the master password every time you start passmem.\n")
+		body.WriteString("If you forget it, there is no way to recover your stored passwords.\n\n")
+		body.WriteString(lipgloss.NewStyle().Foreground(glow.Green).Render("[y]es"))
+		body.WriteString(" — continue to password • ")
+		body.WriteString(lipgloss.NewStyle().Foreground(glow.Red).Render("[n]o"))
+		body.WriteString(" — cancel")
+	case vaultStepPassword:
+		titleText = "Enable vault"
+		body.WriteString("Create a master password for your vault.\n\n")
+		body.WriteString(m.vaultPw.View())
+	case vaultStepConfirm:
+		titleText = "Enable vault"
+		body.WriteString("Re-enter the master password to confirm.\n\n")
+		body.WriteString(m.vaultConfirm.View())
+	case vaultStepMenu:
+		titleText = "Vault"
+		body.WriteString("Vault is enabled.\n\n")
+		body.WriteString(lipgloss.NewStyle().Foreground(glow.Green).Render("[c]"))
+		body.WriteString(" — change master password\n")
+		body.WriteString(lipgloss.NewStyle().Foreground(glow.Red).Render("[d]"))
+		body.WriteString(" — decrypt and remove vault\n")
+	case vaultStepChangePassword:
+		titleText = "Change master password"
+		body.WriteString("Enter a new master password.\n\n")
+		body.WriteString(m.vaultPw.View())
+	case vaultStepChangeConfirm:
+		titleText = "Change master password"
+		body.WriteString("Re-enter the new master password to confirm.\n\n")
+		body.WriteString(m.vaultConfirm.View())
+	case vaultStepDecryptWarn:
+		titleText = "Remove vault"
+		body.WriteString(lipgloss.NewStyle().Foreground(glow.Red).Bold(true).Render("WARNING: this will decrypt all stored passwords."))
+		body.WriteString("\n\n")
+		body.WriteString("The vault will be removed and you will no longer need a master password.\n\n")
+		body.WriteString(lipgloss.NewStyle().Foreground(glow.Green).Render("[y]es"))
+		body.WriteString(" — remove vault • ")
+		body.WriteString(lipgloss.NewStyle().Foreground(glow.Red).Render("[n]o"))
+		body.WriteString(" — cancel")
+	}
+	body.WriteString("\n")
+	if m.vaultErrMsg != "" {
+		body.WriteString(lipgloss.NewStyle().Foreground(glow.Red).Render(m.vaultErrMsg))
+		body.WriteString("\n")
+	}
+
+	var guide string
+	switch m.vaultStep {
+	case vaultStepWarn:
+		guide = "y: continue • n: cancel • esc: back"
+	case vaultStepPassword, vaultStepChangePassword:
+		guide = "enter: continue • ctrl+s: show • esc: back"
+	case vaultStepConfirm, vaultStepChangeConfirm:
+		guide = "enter: confirm • ctrl+s: show • esc: back"
+	case vaultStepMenu:
+		guide = "c: change • d: decrypt • esc: back"
+	case vaultStepDecryptWarn:
+		guide = "y: confirm • n: cancel • esc: back"
+	}
+	footer := dimStyle().Render(guide)
+
+	header := renderTitle(titleText)
+	content := header + "\n\n" + body.String()
+	contentLines := strings.Count(content, "\n") + 1
+	footerLines := strings.Count(footer, "\n") + 1
+	if m.height > 0 {
+		gap := m.height - contentLines - footerLines
+		if gap < 0 {
+			gap = 0
+		}
+		return content + strings.Repeat("\n", gap) + footer
+	}
+	return content + "\n\n" + footer
 }
 
 func (m *Model) loadTrainers() {
@@ -370,6 +658,11 @@ func (m Model) welcomeView() string {
 		Foreground(glow.Fuchsia).
 		Render(fmt.Sprintf("Welcome to %s", consts.AppName))
 
+	var warning string
+	if !m.db.HasVault() {
+		warning = dimStyle().Render("Not encrypted")
+	}
+
 	footer := fmt.Sprintf("Press %s to skip, %s to quit.\n%s",
 		rainbow("Enter"), lipgloss.NewStyle().Foreground(glow.Red).Render("q"),
 		dimStyle().Render(fmt.Sprintf("Skipping in %d...", m.welcomeRemaining)))
@@ -379,7 +672,11 @@ func (m Model) welcomeView() string {
 		Render(fmt.Sprintf("Pending sessions: %d\nTotal trainers: %d",
 			due, len(m.trainers)))
 
-	content := title + "\n\n" + body + "\n\n" + footer
+	content := title
+	if warning != "" {
+		content += "\n" + warning
+	}
+	content += "\n\n" + body + "\n\n" + footer
 	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, content)
 }
 
@@ -424,6 +721,9 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.cursor = 0
 	case "G":
 		m.cursor = len(m.trainers) - 1
+	case "v":
+		m.resetEnableVault()
+		m.screen = screenEnableVault
 	}
 	return m, nil
 }
@@ -459,13 +759,17 @@ func (m Model) listView() string {
 	}
 
 	title := renderTitle("passmem")
+	if !m.db.HasVault() {
+		title += "   " + dimStyle().Render("Not encrypted")
+	}
 	var right string
 	if len(m.trainers) > 0 {
 		right = strings.Repeat("\n", m.cursor) + m.trainerDetailsView(m.trainers[m.cursor])
 	}
 	body := title + "\n\n" + lipgloss.JoinHorizontal(lipgloss.Top, list.String(), "  ", right)
 
-	footer := dimStyle().Render("n: new  e: edit  d: delete  r: refresh  enter: train  q: quit")
+	guide := "n: new  e: edit  d: delete  r: refresh  v: vault  enter: train  q: quit"
+	footer := dimStyle().Render(guide)
 
 	if m.height > 0 {
 		bodyLines := strings.Count(body, "\n") + 1

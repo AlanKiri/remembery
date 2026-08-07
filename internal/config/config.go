@@ -9,8 +9,9 @@ import (
 )
 
 type Config struct {
-	Audio   bool    `yaml:"audio"`
-	Welcome Welcome `yaml:"welcome"`
+	Audio            bool    `yaml:"audio"`
+	Welcome          Welcome `yaml:"welcome"`
+	PromptedForVault bool    `yaml:"prompted_for_vault"`
 }
 
 type Welcome struct {
