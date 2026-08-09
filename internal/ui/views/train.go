@@ -1,4 +1,4 @@
-package tui
+package views
 
 import (
 	"fmt"
@@ -8,14 +8,67 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/alankiri/password-memorizer-tui/internal/beep"
+	"github.com/alankiri/password-memorizer-tui/internal/engine"
 	"github.com/alankiri/password-memorizer-tui/internal/store"
+	"github.com/alankiri/password-memorizer-tui/internal/ui/common"
+	"github.com/alankiri/password-memorizer-tui/internal/ui/screen"
+	"github.com/alankiri/password-memorizer-tui/internal/ui/styles"
 )
 
-type tickMsg struct {
-	t time.Time
+// TrainModel runs an active training session.
+type TrainModel struct {
+	db         *store.DB
+	eng        *engine.Engine
+	beeper     beep.Beep
+	trainer    *store.Trainer
+	counts     bool
+	mask       engine.Mask
+	input      string
+	hint       bool
+	attempt    int
+	delaying   bool
+	delayUntil time.Time
+	countdown  int
+	tStart     time.Time
+	tErrors    int
 }
 
-func (m *Model) updateTrain(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+// NewTrainModel creates a training model for the selected trainer.
+func NewTrainModel(db *store.DB, eng *engine.Engine, beeper beep.Beep, t *store.Trainer, counts bool) (TrainModel, error) {
+	m := TrainModel{
+		db:      db,
+		eng:     eng,
+		beeper:  beeper,
+		trainer: t,
+		counts:  counts,
+		tStart:  time.Now(),
+	}
+	mask, err := eng.MaskFor(t)
+	if err != nil {
+		return m, err
+	}
+	m.mask = mask
+	return m, nil
+}
+
+// Init is a no-op for the training screen.
+func (m TrainModel) Init() tea.Cmd {
+	return nil
+}
+
+// Update handles key and timer messages during training.
+func (m TrainModel) Update(msg tea.Msg) (TrainModel, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		return m.updateKey(msg)
+	case common.TickMsg:
+		return m.updateTick(msg)
+	}
+	return m, nil
+}
+
+func (m TrainModel) updateKey(msg tea.KeyMsg) (TrainModel, tea.Cmd) {
 	if m.delaying {
 		return m, nil
 	}
@@ -24,11 +77,10 @@ func (m *Model) updateTrain(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch s {
 	case "esc":
-		m.screen = screenList
 		m.trainer = nil
 		m.input = ""
 		m.hint = false
-		return m, nil
+		return m, screen.ChangeScreen(screen.ScreenList)
 	case "ctrl+h":
 		m.hint = !m.hint
 		return m, nil
@@ -39,11 +91,11 @@ func (m *Model) updateTrain(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "enter":
-		m.checkCorrect()
+		cmd := m.checkCorrect()
 		if m.delaying {
-			return m, tea.Tick(time.Second, func(t time.Time) tea.Msg { return tickMsg{t} })
+			return m, tea.Batch(cmd, tea.Tick(time.Second, func(t time.Time) tea.Msg { return common.TickMsg{T: t} }))
 		}
-		return m, nil
+		return m, cmd
 	}
 
 	if msg.Type == tea.KeyRunes {
@@ -56,50 +108,54 @@ func (m *Model) updateTrain(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				toAdd = toAdd[:max]
 			}
 			m.input = string(append(inputRunes, toAdd...))
-			m.checkCorrect()
+			cmd := m.checkCorrect()
 			if m.delaying {
-				return m, tea.Tick(time.Second, func(t time.Time) tea.Msg { return tickMsg{t} })
+				return m, tea.Batch(cmd, tea.Tick(time.Second, func(t time.Time) tea.Msg { return common.TickMsg{T: t} }))
 			}
+			return m, cmd
 		}
 	}
 	return m, nil
 }
 
-func (m *Model) checkCorrect() {
+func (m *TrainModel) checkCorrect() tea.Cmd {
 	if m.eng.Validate(m.input, string(m.mask.Password)) {
-		m.doCorrect()
+		return m.doCorrect()
 	} else if len([]rune(m.input)) == len(m.mask.Password) {
 		m.tErrors++
 		m.input = ""
 	}
+	return nil
 }
 
-func (m *Model) doCorrect() {
+func (m *TrainModel) doCorrect() tea.Cmd {
 	m.attempt++
 	m.input = ""
 	m.hint = false
 
 	level := m.mask.Level
 	if m.attempt >= level.RepetitionCount {
-		m.finishSession()
-		return
+		return m.finishSession()
 	}
 
 	m.delaying = true
 	m.delayUntil = time.Now().Add(time.Duration(level.InterAttemptDelay) * time.Second)
 	m.countdown = level.InterAttemptDelay
+	return nil
 }
 
-func (m *Model) finishSession() {
+func (m *TrainModel) finishSession() tea.Cmd {
 	var b strings.Builder
 	b.WriteString("Great job!\n\n")
+
+	nextScreen := screen.ScreenList
+	var levelTrainer *store.Trainer
+	levelOffer := 0
 
 	if m.counts {
 		now := time.Now()
 		if err := m.eng.RecordSession(m.trainer, now, true, m.attempt, m.tErrors); err != nil {
-			m.errMsg = err.Error()
-			m.screen = screenList
-			return
+			return screen.ChangeScreen(screen.ScreenList, err.Error())
 		}
 
 		sess := store.Session{
@@ -111,36 +167,32 @@ func (m *Model) finishSession() {
 			Successful:  true,
 		}
 		if _, err := m.db.CreateSession(sess); err != nil {
-			m.errMsg = err.Error()
-			m.screen = screenList
-			return
+			return screen.ChangeScreen(screen.ScreenList, err.Error())
 		}
 		if err := m.db.UpdateTrainer(*m.trainer); err != nil {
-			m.errMsg = err.Error()
-			m.screen = screenList
-			return
+			return screen.ChangeScreen(screen.ScreenList, err.Error())
 		}
 
 		b.WriteString(fmt.Sprintf("Repetitions: %d\nErrors: %d\nTotal sessions: %d\n",
 			m.attempt, m.tErrors, m.trainer.TotalSessions))
 		nextAvailable := now.Add(time.Duration(m.mask.Level.SessionIntervalHours) * time.Hour)
-		b.WriteString(fmt.Sprintf("Next available in %s\n", formatDuration(time.Until(nextAvailable))))
+		b.WriteString(fmt.Sprintf("Next available in %s\n", common.FormatDuration(time.Until(nextAvailable))))
 
 		can, next := m.eng.CanAdvance(m.trainer)
 		if can {
-			m.levelTrainer = m.trainer
-			m.levelOffer = next
+			levelTrainer = m.trainer
+			levelOffer = next
+			nextScreen = screen.ScreenLevel
 			b.WriteString(fmt.Sprintf("\nYou are ready to advance to level %d!", next))
 		}
 	} else {
 		b.WriteString("Practice complete.\nNo progress was recorded because this trainer is not available yet.")
 	}
 
-	m.congrats = b.String()
-	m.screen = screenCongrats
+	return common.ShowCongrats(b.String(), nextScreen, levelTrainer, levelOffer)
 }
 
-func (m *Model) updateTrainTick(msg tickMsg) (tea.Model, tea.Cmd) {
+func (m TrainModel) updateTick(msg common.TickMsg) (TrainModel, tea.Cmd) {
 	if !m.delaying {
 		return m, nil
 	}
@@ -152,41 +204,24 @@ func (m *Model) updateTrainTick(msg tickMsg) (tea.Model, tea.Cmd) {
 		m.beeper.Beep()
 		mask, err := m.eng.MaskFor(m.trainer)
 		if err != nil {
-			m.errMsg = err.Error()
-			m.screen = screenList
-			return m, nil
+			return m, screen.ChangeScreen(screen.ScreenList, err.Error())
 		}
 		m.mask = mask
 		return m, nil
 	}
 	m.countdown = int(remaining.Seconds()) + 1
-	return m, tea.Tick(time.Second, func(t time.Time) tea.Msg { return tickMsg{t} })
+	return m, tea.Tick(time.Second, func(t time.Time) tea.Msg { return common.TickMsg{T: t} })
 }
 
-func (m *Model) updateLevel(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	s := msg.String()
-	if s == "y" {
-		m.eng.AdvanceIfReady(m.levelTrainer)
-		if err := m.db.UpdateTrainer(*m.levelTrainer); err != nil {
-			m.errMsg = err.Error()
-		}
-		m.loadTrainers()
-		m.screen = screenList
-	} else if s == "n" || s == "esc" {
-		m.loadTrainers()
-		m.screen = screenList
-	}
-	return m, nil
-}
-
-func (m Model) trainView() string {
+// View renders the training screen.
+func (m TrainModel) View(w, h int) string {
 	var b strings.Builder
 
-	if m.trainer == nil {
+	if m.trainer == nil || m.mask.Password == nil {
 		return "loading..."
 	}
 
-	b.WriteString(renderTitle(fmt.Sprintf("Training: %s", m.trainer.Label)))
+	b.WriteString(styles.RenderTitle(fmt.Sprintf("Training: %s", m.trainer.Label)))
 	b.WriteString("\n\n")
 	b.WriteString(lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("Level %d — attempt %d/%d",
 		m.trainer.Level, m.attempt+1, m.mask.Level.RepetitionCount)))
@@ -194,15 +229,15 @@ func (m Model) trainView() string {
 
 	if m.delaying {
 		msg := fmt.Sprintf("Correct! Next attempt in %d...\n\nA beep will be played once the timer ends.", m.countdown)
-		b.WriteString(lipgloss.NewStyle().Foreground(glow.Dim).Render(msg))
+		b.WriteString(lipgloss.NewStyle().Foreground(styles.Glow.Dim).Render(msg))
 		return b.String()
 	}
 
 	promptText := m.mask.Blurred
-	promptColor := glow.Fuchsia
+	promptColor := styles.Glow.Fuchsia
 	if m.hint {
 		promptText = string(m.mask.Password)
-		promptColor = glow.Yellow
+		promptColor = styles.Glow.Yellow
 	}
 
 	inputRunes := []rune(m.input)
@@ -215,7 +250,7 @@ func (m Model) trainView() string {
 	}
 	leftPad := 1
 	arrow := lipgloss.NewStyle().
-		Foreground(glow.White).
+		Foreground(styles.Glow.White).
 		Render(strings.Repeat(" ", leftPad+pos) + "▼")
 
 	b.WriteString(arrow)
@@ -227,19 +262,19 @@ func (m Model) trainView() string {
 		Render(promptText))
 	b.WriteString("\n\n")
 
-	b.WriteString(lipgloss.NewStyle().Foreground(glow.Dim).Render("Input: " + m.input))
+	b.WriteString(lipgloss.NewStyle().Foreground(styles.Glow.Dim).Render("Input: " + m.input))
 	b.WriteString("\n\n")
 
 	status := fmt.Sprintf("typed: %d / %d", len([]rune(m.input)), len(m.mask.Password))
-	b.WriteString(lipgloss.NewStyle().Foreground(glow.Dim).Render(status))
+	b.WriteString(lipgloss.NewStyle().Foreground(styles.Glow.Dim).Render(status))
 
 	body := strings.TrimSuffix(b.String(), "\n")
-	footer := dimStyle().Render("type • Enter: submit • Backspace: remove • Ctrl+H: toggle hint • Esc: quit")
+	footer := styles.DimStyle.Render("type • Enter: submit • Backspace: remove • Ctrl+H: toggle hint • Esc: quit")
 
-	if m.height > 0 {
+	if h > 0 {
 		bodyLines := strings.Count(body, "\n") + 1
 		footerLines := strings.Count(footer, "\n") + 1
-		gap := m.height - bodyLines - footerLines
+		gap := h - bodyLines - footerLines
 		if gap < 0 {
 			gap = 0
 		}
@@ -249,10 +284,4 @@ func (m Model) trainView() string {
 	}
 
 	return body
-}
-
-func (m Model) levelView() string {
-	body := fmt.Sprintf("You are ready to advance %q to level %d.\n\nWarning: sessions at level will reset.\n\n[y]es / [n]o",
-		m.levelTrainer.Label, m.levelOffer)
-	return renderTitle("Level up") + "\n\n" + body
 }

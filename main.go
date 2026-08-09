@@ -3,11 +3,11 @@ package main
 import (
 	"log"
 
-	"github.com/alankiri/password-memorizer-tui/internal/tui"
+	"github.com/alankiri/password-memorizer-tui/internal/ui"
 )
 
 func main() {
-	if err := tui.Run(); err != nil {
+	if err := ui.Run(); err != nil {
 		log.Fatal(err)
 	}
 }

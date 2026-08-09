@@ -1,4 +1,4 @@
-package tui
+package ui
 
 import (
 	"strings"
@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/alankiri/password-memorizer-tui/internal/store"
+	"github.com/alankiri/password-memorizer-tui/internal/ui/styles"
 	"github.com/alankiri/password-memorizer-tui/internal/vault"
 )
 
@@ -188,14 +189,14 @@ func (m unlockModel) View() string {
 	switch m.state {
 	case stateChoice:
 		body.WriteString("Protect your stored passwords with a master key?\n\n")
-		body.WriteString(lipgloss.NewStyle().Foreground(glow.Green).Render("[y]es"))
+		body.WriteString(lipgloss.NewStyle().Foreground(styles.Glow.Green).Render("[y]es"))
 		body.WriteString(" — enable encryption\n")
-		body.WriteString(lipgloss.NewStyle().Foreground(glow.Red).Render("[n]o"))
+		body.WriteString(lipgloss.NewStyle().Foreground(styles.Glow.Red).Render("[n]o"))
 		body.WriteString(" — continue without encryption\n")
 	case statePassword:
 		if m.creating {
 			body.WriteString("Create a master password for your vault.\n")
-			body.WriteString(dimStyle().Render("If you forget it, your stored passwords cannot be recovered."))
+			body.WriteString(styles.DimStyle.Render("If you forget it, your stored passwords cannot be recovered."))
 			body.WriteString("\n\n")
 		} else {
 			body.WriteString("Enter your master password to unlock the vault.\n\n")
@@ -207,18 +208,18 @@ func (m unlockModel) View() string {
 		body.WriteString(m.confirm.View())
 		body.WriteString("\n")
 	case stateResetWarn:
-		body.WriteString(lipgloss.NewStyle().Foreground(glow.Red).Bold(true).Render("WARNING: this will erase all stored data."))
+		body.WriteString(lipgloss.NewStyle().Foreground(styles.Glow.Red).Bold(true).Render("WARNING: this will erase all stored data."))
 		body.WriteString("\n\n")
 		body.WriteString("If you forgot your master password, resetting is the only way to start over.\n\n")
-		body.WriteString(lipgloss.NewStyle().Foreground(glow.Green).Render("[y]es"))
+		body.WriteString(lipgloss.NewStyle().Foreground(styles.Glow.Green).Render("[y]es"))
 		body.WriteString(" to confirm • ")
-		body.WriteString(lipgloss.NewStyle().Foreground(glow.Red).Render("[n]o"))
+		body.WriteString(lipgloss.NewStyle().Foreground(styles.Glow.Red).Render("[n]o"))
 		body.WriteString(" to cancel")
 		body.WriteString("\n")
 	}
 
 	if m.errMsg != "" {
-		body.WriteString(lipgloss.NewStyle().Foreground(glow.Red).Render(m.errMsg))
+		body.WriteString(lipgloss.NewStyle().Foreground(styles.Glow.Red).Render(m.errMsg))
 		body.WriteString("\n")
 	}
 
@@ -230,18 +231,18 @@ func (m unlockModel) View() string {
 		if m.creating {
 			footerText = "enter: continue • ctrl+s: show • q: quit"
 		} else {
-			footerText = dimStyle().Render("enter: unlock • ctrl+s: show • ") +
-				lipgloss.NewStyle().Foreground(glow.Red).Render("r: reset") +
-				dimStyle().Render(" • q: quit")
+			footerText = styles.DimStyle.Render("enter: unlock • ctrl+s: show • ") +
+				lipgloss.NewStyle().Foreground(styles.Glow.Red).Render("r: reset") +
+				styles.DimStyle.Render(" • q: quit")
 		}
 	case stateConfirm:
 		footerText = "enter: create • ctrl+s: show • q: quit"
 	case stateResetWarn:
 		footerText = "y: confirm • n: cancel • q: quit"
 	}
-	footer := dimStyle().Padding(0, 2).Render(footerText)
+	footer := styles.DimStyle.Padding(0, 2).Render(footerText)
 
-	header := lipgloss.NewStyle().Padding(0, 2).Render(renderTitle("Master password"))
+	header := lipgloss.NewStyle().Padding(0, 2).Render(styles.RenderTitle("Master password"))
 	info := lipgloss.NewStyle().Padding(0, 2).Render(body.String())
 	content := "\n" + header + "\n\n" + info
 	bodyLines := strings.Count(content, "\n") + 1

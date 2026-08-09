@@ -1,4 +1,4 @@
-package tui
+package views
 
 import (
 	"fmt"
@@ -12,6 +12,28 @@ import (
 	"github.com/alankiri/password-memorizer-tui/internal/config"
 	"github.com/alankiri/password-memorizer-tui/internal/engine"
 	"github.com/alankiri/password-memorizer-tui/internal/levels"
+	"github.com/alankiri/password-memorizer-tui/internal/store"
+	"github.com/alankiri/password-memorizer-tui/internal/ui/screen"
+	"github.com/alankiri/password-memorizer-tui/internal/ui/styles"
+)
+
+type settingsCategory int
+
+const (
+	settingsCategoryVault settingsCategory = iota
+	settingsCategoryLevels
+)
+
+type vaultStep int
+
+const (
+	vaultStepWarn vaultStep = iota
+	vaultStepPassword
+	vaultStepConfirm
+	vaultStepMenu
+	vaultStepChangePassword
+	vaultStepChangeConfirm
+	vaultStepDecryptWarn
 )
 
 // settingsItem represents a single row inside the level settings list.
@@ -45,9 +67,71 @@ var levelFields = []levelField{
 	{name: "description", display: "Description", isInt: false, desc: "Short description of the level shown in settings."},
 }
 
+// SettingsModel is the child model for the settings screen.
+type SettingsModel struct {
+	db                  *store.DB
+	cfg                 *config.Config
+	eng                 *engine.Engine
+	levels              []levels.Level
+	width, height       int
+	settingsCat         settingsCategory
+	vaultStep           vaultStep
+	vaultPw             textinput.Model
+	vaultConfirm        textinput.Model
+	vaultShowPw         bool
+	vaultChoice         int
+	vaultErrMsg         string
+	settingsTabsFocused bool
+	settingsFocus       int
+	settingsExpanded    []bool
+	settingsEditing     bool
+	settingsEditInput   textinput.Model
+	settingsEditIdx     int
+	settingsEditField   string
+	settingsEditErr     string
+}
+
+// NewSettingsModel creates a settings model in its initial state.
+func NewSettingsModel(db *store.DB, cfg *config.Config, eng *engine.Engine, levels []levels.Level) SettingsModel {
+	m := SettingsModel{
+		db:     db,
+		cfg:    cfg,
+		eng:    eng,
+		levels: levels,
+	}
+	m.vaultPw = textinput.New()
+	m.vaultPw.Placeholder = "master password"
+	m.vaultPw.EchoMode = textinput.EchoPassword
+	m.vaultPw.EchoCharacter = '•'
+	m.vaultPw.CharLimit = 64
+
+	m.vaultConfirm = textinput.New()
+	m.vaultConfirm.Placeholder = "confirm password"
+	m.vaultConfirm.EchoMode = textinput.EchoPassword
+	m.vaultConfirm.EchoCharacter = '•'
+	m.vaultConfirm.CharLimit = 64
+
+	m.settingsEditInput = textinput.New()
+	m.settingsEditInput.CharLimit = 64
+	m.resetSettings()
+	return m
+}
+
+// Init is a no-op for the settings screen.
+func (m SettingsModel) Init() tea.Cmd {
+	return nil
+}
+
+// View renders the settings screen.
+func (m *SettingsModel) View(w, h int) string {
+	m.width = w
+	m.height = h
+	return m.settingsView()
+}
+
 // resetSettings puts the settings screen into its initial vault state and
 // forgets any level expansion, focus, or in-progress edit.
-func (m *Model) resetSettings() {
+func (m *SettingsModel) resetSettings() {
 	m.settingsCat = settingsCategoryVault
 	m.resetEnableVault()
 	m.settingsTabsFocused = true
@@ -61,7 +145,7 @@ func (m *Model) resetSettings() {
 // resetEnableVault clears the vault password inputs and chooses the right
 // starting step based on whether a vault already exists.
 // resetForCategory resets the focused section when the category changes.
-func (m *Model) resetForCategory() {
+func (m *SettingsModel) resetForCategory() {
 	if m.settingsCat == settingsCategoryVault {
 		m.resetEnableVault()
 	} else {
@@ -69,7 +153,7 @@ func (m *Model) resetForCategory() {
 	}
 }
 
-func (m *Model) resetEnableVault() {
+func (m *SettingsModel) resetEnableVault() {
 	m.vaultPw.SetValue("")
 	m.vaultConfirm.SetValue("")
 	m.vaultPw.EchoMode = textinput.EchoPassword
@@ -90,7 +174,7 @@ func (m *Model) resetEnableVault() {
 
 // applyVaultEcho toggles the password inputs between masked and visible
 // based on m.vaultShowPw.
-func (m *Model) applyVaultEcho() {
+func (m *SettingsModel) applyVaultEcho() {
 	if m.vaultShowPw {
 		m.vaultPw.EchoMode = textinput.EchoNormal
 		m.vaultConfirm.EchoMode = textinput.EchoNormal
@@ -106,38 +190,40 @@ func (m *Model) applyVaultEcho() {
 // categories and return focus to the sidebar. Tab toggles focus between the
 // sidebar and the active section. Esc exits when the sidebar is focused and
 // is delegated to the active section otherwise.
-func (m Model) updateSettings(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	s := msg.String()
+func (m *SettingsModel) Update(msg tea.Msg) (SettingsModel, tea.Cmd) {
+	key, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return *m, nil
+	}
+	s := key.String()
 
 	// When editing a level field, all input goes to the textinput.
 	if m.settingsEditing && m.settingsCat == settingsCategoryLevels {
-		return m.updateLevelEdit(msg)
+		return m.updateLevelEdit(key)
 	}
 
 	if s == "q" {
-		m.screen = screenList
-		return m, nil
+		return *m, screen.ChangeScreen(screen.ScreenList)
 	}
 
 	if s == "esc" {
 		if m.settingsTabsFocused {
-			m.screen = screenList
-			return m, nil
+			return *m, screen.ChangeScreen(screen.ScreenList)
 		}
 		// Let the active section decide what esc means inside it.
 		switch m.settingsCat {
 		case settingsCategoryVault:
-			return m.updateVaultSettings(msg)
+			return m.updateVaultSettings(key)
 		case settingsCategoryLevels:
-			return m.updateLevelsSettings(msg)
+			return m.updateLevelsSettings(key)
 		}
-		return m, nil
+		return *m, nil
 	}
 
 	// Tab always toggles focus, even when a section is active.
 	if s == "tab" {
 		m.settingsTabsFocused = !m.settingsTabsFocused
-		return m, nil
+		return *m, nil
 	}
 
 	// Number keys switch category and reset the sidebar focus.
@@ -145,13 +231,13 @@ func (m Model) updateSettings(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.settingsCat = settingsCategoryVault
 		m.settingsTabsFocused = true
 		m.resetForCategory()
-		return m, nil
+		return *m, nil
 	}
 	if s == "2" {
 		m.settingsCat = settingsCategoryLevels
 		m.settingsTabsFocused = true
 		m.resetForCategory()
-		return m, nil
+		return *m, nil
 	}
 
 	// When the sidebar is focused, j/k also switch categories.
@@ -160,28 +246,29 @@ func (m Model) updateSettings(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.settingsCat = (m.settingsCat + 1) % 2
 			m.resetForCategory()
 		}
-		return m, nil
+		return *m, nil
 	}
 
 	switch m.settingsCat {
 	case settingsCategoryVault:
-		return m.updateVaultSettings(msg)
+		return m.updateVaultSettings(key)
 	case settingsCategoryLevels:
-		return m.updateLevelsSettings(msg)
+		return m.updateLevelsSettings(key)
 	}
-	return m, nil
+	return *m, nil
 }
 
 // updateVaultSettings handles the vault sub-states: enable, change, decrypt.
 // Warning screens are single-action: enter confirms, esc goes back.
 // Password inputs use esc to return to the previous step.
-func (m Model) updateVaultSettings(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *SettingsModel) updateVaultSettings(msg tea.KeyMsg) (SettingsModel, tea.Cmd) {
 	s := msg.String()
 
 	if s == "esc" {
 		switch m.vaultStep {
 		case vaultStepWarn, vaultStepMenu:
-			m.screen = screenList
+			m.vaultErrMsg = ""
+			return *m, screen.ChangeScreen(screen.ScreenList)
 		case vaultStepPassword:
 			m.vaultStep = vaultStepWarn
 		case vaultStepConfirm:
@@ -194,13 +281,13 @@ func (m Model) updateVaultSettings(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.vaultStep = vaultStepMenu
 		}
 		m.vaultErrMsg = ""
-		return m, nil
+		return *m, nil
 	}
 
 	if s == "ctrl+s" {
 		m.vaultShowPw = !m.vaultShowPw
 		m.applyVaultEcho()
-		return m, nil
+		return *m, nil
 	}
 	switch m.vaultStep {
 	case vaultStepWarn:
@@ -209,7 +296,7 @@ func (m Model) updateVaultSettings(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.vaultPw.Focus()
 			m.vaultErrMsg = ""
 		}
-		return m, nil
+		return *m, nil
 	case vaultStepPassword:
 		if s == "enter" {
 			m.vaultStep = vaultStepConfirm
@@ -221,30 +308,30 @@ func (m Model) updateVaultSettings(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.vaultErrMsg = ""
 			if m.vaultPw.Value() != m.vaultConfirm.Value() {
 				m.vaultErrMsg = "Passwords do not match"
-				return m, nil
+				return *m, nil
 			}
 			v, err := m.db.CreateVaultAndEncrypt(m.vaultPw.Value())
 			if err != nil {
 				m.vaultErrMsg = err.Error()
-				return m, nil
+				return *m, nil
 			}
 			m.db.SetVault(v)
 			m.cfg.PromptedForVault = true
-			if err := config.Save(m.cfg); err != nil {
+			if err := config.Save(*m.cfg); err != nil {
 				m.vaultErrMsg = err.Error()
-				return m, nil
+				return *m, nil
 			}
-			m.loadTrainers()
-			m.screen = screenList
+
+			return *m, screen.ChangeScreen(screen.ScreenList)
 		}
 	case vaultStepMenu:
 		if s == "j" || s == "down" {
 			m.vaultChoice = 1
-			return m, nil
+			return *m, nil
 		}
 		if s == "k" || s == "up" {
 			m.vaultChoice = 0
-			return m, nil
+			return *m, nil
 		}
 		if s == "enter" {
 			if m.vaultChoice == 0 {
@@ -259,7 +346,7 @@ func (m Model) updateVaultSettings(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.vaultErrMsg = ""
 			}
 		}
-		return m, nil
+		return *m, nil
 	case vaultStepChangePassword:
 		if s == "enter" {
 			m.vaultStep = vaultStepChangeConfirm
@@ -271,27 +358,27 @@ func (m Model) updateVaultSettings(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.vaultErrMsg = ""
 			if m.vaultPw.Value() != m.vaultConfirm.Value() {
 				m.vaultErrMsg = "Passwords do not match"
-				return m, nil
+				return *m, nil
 			}
 			v, err := m.db.ChangeVault(m.vaultPw.Value())
 			if err != nil {
 				m.vaultErrMsg = err.Error()
-				return m, nil
+				return *m, nil
 			}
 			m.db.SetVault(v)
-			m.loadTrainers()
-			m.screen = screenList
+
+			return *m, screen.ChangeScreen(screen.ScreenList)
 		}
 	case vaultStepDecryptWarn:
 		if s == "enter" {
 			if err := m.db.DecryptVault(); err != nil {
 				m.vaultErrMsg = err.Error()
-				return m, nil
+				return *m, nil
 			}
-			m.loadTrainers()
-			m.screen = screenList
+
+			return *m, screen.ChangeScreen(screen.ScreenList)
 		}
-		return m, nil
+		return *m, nil
 	}
 	var cmd tea.Cmd
 	if m.vaultStep == vaultStepConfirm || m.vaultStep == vaultStepChangeConfirm {
@@ -299,12 +386,12 @@ func (m Model) updateVaultSettings(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	} else if m.vaultStep == vaultStepPassword || m.vaultStep == vaultStepChangePassword {
 		m.vaultPw, cmd = m.vaultPw.Update(msg)
 	}
-	return m, cmd
+	return *m, cmd
 }
 
 // settingsLevelItems builds a flattened list of level headers and expanded
 // fields that the user can navigate with j/k.
-func (m *Model) settingsLevelItems() []settingsItem {
+func (m *SettingsModel) settingsLevelItems() []settingsItem {
 	var items []settingsItem
 	for i := range m.levels {
 		items = append(items, settingsItem{levelIdx: i, header: true})
@@ -319,37 +406,37 @@ func (m *Model) settingsLevelItems() []settingsItem {
 
 // updateLevelsSettings handles j/k navigation, expand/collapse (l/h), and
 // entering edit mode for a level field.
-func (m *Model) updateLevelsSettings(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *SettingsModel) updateLevelsSettings(msg tea.KeyMsg) (SettingsModel, tea.Cmd) {
 	s := msg.String()
 	items := m.settingsLevelItems()
 	if len(items) == 0 {
-		return m, nil
+		return *m, nil
 	}
 
 	if s == "esc" {
 		m.settingsTabsFocused = true
-		return m, nil
+		return *m, nil
 	}
 
 	if s == "j" || s == "down" {
 		if m.settingsFocus < len(items)-1 {
 			m.settingsFocus++
 		}
-		return m, nil
+		return *m, nil
 	}
 	if s == "k" || s == "up" {
 		if m.settingsFocus > 0 {
 			m.settingsFocus--
 		}
-		return m, nil
+		return *m, nil
 	}
 	if s == "g" {
 		m.settingsFocus = 0
-		return m, nil
+		return *m, nil
 	}
 	if s == "G" {
 		m.settingsFocus = len(items) - 1
-		return m, nil
+		return *m, nil
 	}
 
 	// h collapses the focused level if it is expanded and moves focus back
@@ -365,7 +452,7 @@ func (m *Model) updateLevelsSettings(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
-		return m, nil
+		return *m, nil
 	}
 
 	// l or enter expands a level header or starts editing a field.
@@ -376,18 +463,18 @@ func (m *Model) updateLevelsSettings(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.settingsExpanded[item.levelIdx] = true
 				m.settingsFocus++
 			}
-			return m, nil
+			return *m, nil
 		}
 		m.startLevelEdit(item.levelIdx, item.field)
-		return m, nil
+		return *m, nil
 	}
 
-	return m, nil
+	return *m, nil
 }
 
 // startLevelEdit puts the selected level field into edit mode and pre-fills
 // the textinput with the current value.
-func (m *Model) startLevelEdit(levelIdx int, field string) {
+func (m *SettingsModel) startLevelEdit(levelIdx int, field string) {
 	m.settingsEditing = true
 	m.settingsEditIdx = levelIdx
 	m.settingsEditField = field
@@ -399,7 +486,7 @@ func (m *Model) startLevelEdit(levelIdx int, field string) {
 }
 
 // getLevelFieldValue returns the current string value of a level field.
-func (m Model) getLevelFieldValue(levelIdx int, field string) string {
+func (m SettingsModel) getLevelFieldValue(levelIdx int, field string) string {
 	lvl := m.levels[levelIdx]
 	switch field {
 	case "base_blur_percent":
@@ -423,7 +510,7 @@ func (m Model) getLevelFieldValue(levelIdx int, field string) string {
 }
 
 // setLevelFieldValue parses and validates a new value for a level field.
-func (m *Model) setLevelFieldValue(levelIdx int, field, value string) error {
+func (m *SettingsModel) setLevelFieldValue(levelIdx int, field, value string) error {
 	lvl := &m.levels[levelIdx]
 	switch field {
 	case "typing_validation_mode":
@@ -469,7 +556,7 @@ func (m *Model) setLevelFieldValue(levelIdx int, field, value string) error {
 
 // validateAndSaveLevel applies the edited value, writes the levels yaml, and
 // rebuilds the engine so the changes are active immediately.
-func (m *Model) validateAndSaveLevel() error {
+func (m *SettingsModel) validateAndSaveLevel() error {
 	val := m.settingsEditInput.Value()
 	if err := m.setLevelFieldValue(m.settingsEditIdx, m.settingsEditField, val); err != nil {
 		return err
@@ -477,40 +564,40 @@ func (m *Model) validateAndSaveLevel() error {
 	if err := levels.Save(m.levels); err != nil {
 		return err
 	}
-	m.eng = engine.New(m.levels)
+	*m.eng = engine.Engine{Levels: m.levels}
 	return nil
 }
 
 // updateLevelEdit reads keys while a level field is being edited.
 // enter saves the value, esc cancels.
-func (m Model) updateLevelEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *SettingsModel) updateLevelEdit(msg tea.KeyMsg) (SettingsModel, tea.Cmd) {
 	s := msg.String()
 	if s == "esc" {
 		m.settingsEditing = false
 		m.settingsEditInput.SetValue("")
 		m.settingsEditErr = ""
-		return m, nil
+		return *m, nil
 	}
 	if s == "enter" {
 		if err := m.validateAndSaveLevel(); err != nil {
 			m.settingsEditErr = err.Error()
-			return m, nil
+			return *m, nil
 		}
 		m.settingsEditing = false
 		m.settingsEditInput.SetValue("")
 		m.settingsEditErr = ""
-		return m, nil
+		return *m, nil
 	}
 	var cmd tea.Cmd
 	m.settingsEditInput, cmd = m.settingsEditInput.Update(msg)
-	return m, cmd
+	return *m, cmd
 }
 
 // settingsView renders the full settings screen: title, category sidebar,
 // and the active sub-view.
-func (m Model) settingsView() string {
+func (m SettingsModel) settingsView() string {
 	var body strings.Builder
-	title := renderTitle("Settings")
+	title := styles.RenderTitle("Settings")
 	body.WriteString(title)
 	body.WriteString("\n\n")
 
@@ -526,7 +613,7 @@ func (m Model) settingsView() string {
 
 	content := body.String()
 	contentLines := strings.Count(content, "\n") + 1
-	footer := dimStyle().Render("tab: switch focus • 1: vault • 2: levels • esc: back")
+	footer := styles.DimStyle.Render("tab: switch focus • 1: vault • 2: levels • esc: back")
 	footerLines := strings.Count(footer, "\n") + 1
 	if m.height > 0 {
 		gap := m.height - contentLines - footerLines
@@ -541,7 +628,7 @@ func (m Model) settingsView() string {
 // settingsSidebar draws the category selection. The active category is
 // highlighted when focus is on the sidebar and cream when focus is in the
 // section so the focus state is always clear.
-func (m Model) settingsSidebar() string {
+func (m SettingsModel) settingsSidebar() string {
 	var sb strings.Builder
 	items := []struct {
 		key  string
@@ -553,13 +640,13 @@ func (m Model) settingsSidebar() string {
 	for i, it := range items {
 		isActive := settingsCategory(i) == m.settingsCat
 		prefix := "  "
-		style := dimStyle()
+		style := styles.DimStyle
 		if isActive && m.settingsTabsFocused {
 			prefix = "> "
-			style = lipgloss.NewStyle().Bold(true).Foreground(glow.Fuchsia)
+			style = lipgloss.NewStyle().Bold(true).Foreground(styles.Glow.Fuchsia)
 		} else if isActive {
 			prefix = "> "
-			style = lipgloss.NewStyle().Foreground(glow.Cream)
+			style = lipgloss.NewStyle().Foreground(styles.Glow.Cream)
 		}
 		sb.WriteString(style.Render(prefix + fmt.Sprintf("%s. %s", it.key, it.name)))
 		sb.WriteString("\n")
@@ -569,12 +656,12 @@ func (m Model) settingsSidebar() string {
 
 // vaultSettingsView renders the active vault sub-state. Yes/no prompts are
 // presented as a selectable list.
-func (m Model) vaultSettingsView() string {
+func (m SettingsModel) vaultSettingsView() string {
 	var body strings.Builder
 
 	switch m.vaultStep {
 	case vaultStepWarn:
-		body.WriteString(lipgloss.NewStyle().Foreground(glow.Red).Bold(true).Render("WARNING: this will encrypt all stored trainer passwords."))
+		body.WriteString(lipgloss.NewStyle().Foreground(styles.Glow.Red).Bold(true).Render("WARNING: this will encrypt all stored trainer passwords."))
 		body.WriteString("\n\n")
 		body.WriteString("Once enabled, you will need the master password every time you start passmem.\n")
 		body.WriteString("If you forget it, there is no way to recover your stored passwords.\n\n")
@@ -595,14 +682,14 @@ func (m Model) vaultSettingsView() string {
 		body.WriteString("Re-enter the new master password to confirm.\n\n")
 		body.WriteString(m.vaultConfirm.View())
 	case vaultStepDecryptWarn:
-		body.WriteString(lipgloss.NewStyle().Foreground(glow.Red).Bold(true).Render("WARNING: this will decrypt all stored passwords."))
+		body.WriteString(lipgloss.NewStyle().Foreground(styles.Glow.Red).Bold(true).Render("WARNING: this will decrypt all stored passwords."))
 		body.WriteString("\n\n")
 		body.WriteString("The vault will be removed and you will no longer need a master password.\n\n")
 		body.WriteString(m.vaultActionButton("Remove vault"))
 	}
 	body.WriteString("\n")
 	if m.vaultErrMsg != "" {
-		body.WriteString(lipgloss.NewStyle().Foreground(glow.Red).Render(m.vaultErrMsg))
+		body.WriteString(lipgloss.NewStyle().Foreground(styles.Glow.Red).Render(m.vaultErrMsg))
 		body.WriteString("\n")
 	}
 
@@ -617,25 +704,25 @@ func (m Model) vaultSettingsView() string {
 	case vaultStepConfirm, vaultStepChangeConfirm:
 		guide = "enter: confirm • ctrl+s: show • esc: back"
 	}
-	footer := dimStyle().Render(guide)
+	footer := styles.DimStyle.Render(guide)
 	return body.String() + "\n" + footer
 }
 
 // choiceList renders a vertical list of options. The arrow is always on the
 // last selected item and turns blue when the section is focused.
-func (m Model) choiceList(options []string, selected int) string {
+func (m SettingsModel) choiceList(options []string, selected int) string {
 	var b strings.Builder
 	for i, opt := range options {
 		var style lipgloss.Style
 		prefix := "  "
 		if i == selected {
 			prefix = "> "
-			style = lipgloss.NewStyle().Bold(true).Foreground(glow.Cream)
+			style = lipgloss.NewStyle().Bold(true).Foreground(styles.Glow.Cream)
 			if !m.settingsTabsFocused {
-				style = lipgloss.NewStyle().Bold(true).Foreground(glow.Blue)
+				style = lipgloss.NewStyle().Bold(true).Foreground(styles.Glow.Blue)
 			}
 		} else {
-			style = lipgloss.NewStyle().Foreground(glow.Cream)
+			style = lipgloss.NewStyle().Foreground(styles.Glow.Cream)
 		}
 		b.WriteString(style.Render(prefix + opt))
 		b.WriteString("\n")
@@ -645,10 +732,10 @@ func (m Model) choiceList(options []string, selected int) string {
 
 // vaultActionButton renders the single action on a warning screen. It keeps an
 // arrow at all times and is blue only when the settings section has focus.
-func (m Model) vaultActionButton(label string) string {
-	style := lipgloss.NewStyle().Foreground(glow.Cream)
+func (m SettingsModel) vaultActionButton(label string) string {
+	style := lipgloss.NewStyle().Foreground(styles.Glow.Cream)
 	if !m.settingsTabsFocused {
-		style = lipgloss.NewStyle().Bold(true).Foreground(glow.Blue)
+		style = lipgloss.NewStyle().Bold(true).Foreground(styles.Glow.Blue)
 	}
 	return style.Render("> " + label)
 }
@@ -657,7 +744,7 @@ func (m Model) vaultActionButton(label string) string {
 // default and expands to show the editable advanced fields. Field
 // descriptions for the focused row are shown to the right, similar to the
 // level picker when creating a new trainer.
-func (m Model) levelsSettingsView() string {
+func (m SettingsModel) levelsSettingsView() string {
 	var body strings.Builder
 	items := m.settingsLevelItems()
 
@@ -665,18 +752,18 @@ func (m Model) levelsSettingsView() string {
 		if item.header {
 			lvl := m.levels[item.levelIdx]
 			prefix := "  "
-			style := lipgloss.NewStyle().Foreground(glow.Cream)
+			style := lipgloss.NewStyle().Foreground(styles.Glow.Cream)
 			if i == m.settingsFocus {
 				prefix = "> "
 				if !m.settingsTabsFocused {
-					style = lipgloss.NewStyle().Bold(true).Foreground(glow.Blue)
+					style = lipgloss.NewStyle().Bold(true).Foreground(styles.Glow.Blue)
 				}
 			}
 			state := "[expand]"
 			if m.settingsExpanded[item.levelIdx] {
 				state = "[collapse]"
 			}
-			line := style.Render(prefix+fmt.Sprintf("Level %d — %s", lvl.Number, lvl.Description)) + " " + dimStyle().Render(state)
+			line := style.Render(prefix+fmt.Sprintf("Level %d — %s", lvl.Number, lvl.Description)) + " " + styles.DimStyle.Render(state)
 			body.WriteString(line)
 		} else {
 			for _, f := range levelFields {
@@ -701,15 +788,15 @@ func (m Model) levelsSettingsView() string {
 		body.WriteString(m.settingsEditInput.View())
 		body.WriteString("\n")
 		if m.settingsEditErr != "" {
-			body.WriteString(lipgloss.NewStyle().Foreground(glow.Red).Render(m.settingsEditErr))
+			body.WriteString(lipgloss.NewStyle().Foreground(styles.Glow.Red).Render(m.settingsEditErr))
 			body.WriteString("\n")
 		} else {
-			body.WriteString(dimStyle().Render("enter: save • esc: cancel"))
+			body.WriteString(styles.DimStyle.Render("enter: save • esc: cancel"))
 			body.WriteString("\n")
 		}
 	} else {
 		body.WriteString("\n")
-		body.WriteString(dimStyle().Render("j/k: navigate • enter: expand/edit"))
+		body.WriteString(styles.DimStyle.Render("j/k: navigate • enter: expand/edit"))
 		body.WriteString("\n")
 	}
 	return body.String()
@@ -717,15 +804,15 @@ func (m Model) levelsSettingsView() string {
 
 // renderLevelFieldRow draws one field value. The focused item keeps an arrow
 // and is blue only when the level list has focus.
-func (m Model) renderLevelFieldRow(f levelField, value string, focused bool) string {
+func (m SettingsModel) renderLevelFieldRow(f levelField, value string, focused bool) string {
 	prefix := "    "
 	if focused {
 		prefix = ">   "
 	}
 	leftText := prefix + fmt.Sprintf("%s: %s", f.display, value)
-	leftStyle := lipgloss.NewStyle().Foreground(glow.Cream)
+	leftStyle := lipgloss.NewStyle().Foreground(styles.Glow.Cream)
 	if focused && !m.settingsTabsFocused {
-		leftStyle = lipgloss.NewStyle().Foreground(glow.Blue)
+		leftStyle = lipgloss.NewStyle().Foreground(styles.Glow.Blue)
 	}
 	left := leftStyle.Render(leftText)
 
@@ -740,7 +827,7 @@ func (m Model) renderLevelFieldRow(f levelField, value string, focused bool) str
 		descWidth = 20
 	}
 	right := lipgloss.NewStyle().
-		Foreground(glow.Dim).
+		Foreground(styles.Glow.Dim).
 		Width(descWidth).
 		Render(f.desc)
 	return lipgloss.JoinHorizontal(lipgloss.Top, left, "  ", right)
