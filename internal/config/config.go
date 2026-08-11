@@ -5,14 +5,18 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/alankiri/password-memorizer-tui/internal/levels"
 	"github.com/alankiri/password-memorizer-tui/internal/paths"
 )
 
 type Config struct {
-	PromptedForVault bool `yaml:"prompted_for_vault"`
+	PromptedForVault bool           `yaml:"prompted_for_vault"`
+	Levels           []levels.Level `yaml:"levels"`
 }
 
-var Default = Config{}
+var Default = Config{
+	Levels: levels.Default,
+}
 
 func Load() (Config, error) {
 	if err := paths.EnsureDirs(); err != nil {
@@ -32,6 +36,12 @@ func Load() (Config, error) {
 	var c Config
 	if err := yaml.Unmarshal(data, &c); err != nil {
 		return Config{}, err
+	}
+	if len(c.Levels) == 0 {
+		c.Levels = levels.Default
+		if err := Save(c); err != nil {
+			return Config{}, err
+		}
 	}
 	return c, nil
 }

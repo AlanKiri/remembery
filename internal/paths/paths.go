@@ -43,10 +43,6 @@ func ConfigFile() string {
 	return filepath.Join(ConfigDir(), "config.yaml")
 }
 
-func LevelsFile() string {
-	return filepath.Join(ConfigDir(), "levels.yaml")
-}
-
 func DBFile() string {
 	return filepath.Join(DataDir(), "data.db")
 }

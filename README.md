@@ -41,7 +41,7 @@ Or with `go run`:
 go run .
 ```
 
-The first run creates the configuration and data directories and writes default `config.yaml` and `levels.yaml` files.
+The first run creates the configuration and data directories and writes a default `config.yaml` file.
 
 ## Data and configuration
 
@@ -52,58 +52,57 @@ Paths are resolved automatically:
 
 Files created on first run:
 
-- `config.yaml` — app settings (audio flag, welcome study days).
-- `levels.yaml` — dev-editable familiarity level definitions.
+- `config.yaml` — app settings and level definitions.
 - `data.db` — SQLite database for trainers and sessions.
 
 ## Key bindings
 
 ### Welcome
 
-| Key | Action |
-|-----|--------|
+| Key   | Action               |
+| ----- | -------------------- |
 | Enter | Continue to the list |
-| q | Quit |
+| q     | Quit                 |
 
 ### Main list
 
-| Key | Action |
-|-----|--------|
-| j / down | Move down |
-| k / up | Move up |
-| g | Go to top |
-| G | Go to bottom |
-| n | New trainer |
-| d | Delete selected trainer |
-| r | Refresh list |
-| Enter | Start training |
-| q | Quit |
+| Key      | Action                  |
+| -------- | ----------------------- |
+| j / down | Move down               |
+| k / up   | Move up                 |
+| g        | Go to top               |
+| G        | Go to bottom            |
+| n        | New trainer             |
+| d        | Delete selected trainer |
+| r        | Refresh list            |
+| Enter    | Start training          |
+| q        | Quit                    |
 
 ### New trainer
 
-| Key | Action |
-|-----|--------|
-| Tab | Switch focus (label, password, level) |
+| Key                | Action                                      |
+| ------------------ | ------------------------------------------- |
+| Tab                | Switch focus (label, password, level)       |
 | up / down or j / k | Change level when the level list is focused |
-| Enter | Save trainer |
-| Esc | Cancel |
+| Enter              | Save trainer                                |
+| Esc                | Cancel                                      |
 
 ### Training
 
-| Key | Action |
-|-----|--------|
-| type | Type the password |
-| Enter | Submit the current attempt |
-| Backspace | Remove the last character |
-| Ctrl+H | Show the full password as a hint and clear input |
-| Esc | Quit the session without recording |
+| Key       | Action                                           |
+| --------- | ------------------------------------------------ |
+| type      | Type the password                                |
+| Enter     | Submit the current attempt                       |
+| Backspace | Remove the last character                        |
+| Ctrl+H    | Show the full password as a hint and clear input |
+| Esc       | Quit the session without recording               |
 
 ### Delete / Level-up prompts
 
-| Key | Action |
-|-----|--------|
-| y | Confirm |
-| n / Esc | Cancel |
+| Key     | Action  |
+| ------- | ------- |
+| y       | Confirm |
+| n / Esc | Cancel  |
 
 ## Configuration files
 
@@ -125,23 +124,6 @@ welcome:
 - `audio` — whether the terminal beep (`\a`) is used.
 - `welcome.study_days` — list of weekdays used for welcome stats.
 
-### levels.yaml
-
-Each level can define:
-
-- `repetition_count`
-- `inter_attempt_delay`
-- `base_blur_percent`
-- `blur_step_percent`
-- `max_blur_percent`
-- `hint_reduction_percent`
-- `required_sessions_to_progress`
-- `session_interval_days`
-- `typing_validation_mode`
-- `description`
-
-The default file is created with five levels. Edit it and restart the app to experiment with difficulty.
-
 ## Blur formula
 
 ```text
@@ -159,7 +141,7 @@ internal/
   config/   App config loading
   consts/   Exported app name
   engine/   Blur/hint math and level-up logic
-  levels/   Levels loading and defaults
+  levels/   Level defaults and types
   paths/    Config / data path helpers
   store/    SQLite repository
   tui/      Bubble Tea UI

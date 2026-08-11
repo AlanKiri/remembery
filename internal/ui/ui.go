@@ -47,10 +47,7 @@ func Run() error {
 	if err != nil {
 		return err
 	}
-	lvl, err := levels.Load()
-	if err != nil {
-		return err
-	}
+	lvl := cfg.Levels
 	for {
 		db, err := store.New()
 		if err != nil {
