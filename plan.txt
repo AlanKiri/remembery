@@ -1,0 +1,54 @@
+Pre-release plan for remembery
+
+Already done:
+- Rebrand app and module to remembery
+- Rename vault canary
+- Add MIT LICENSE
+- Add justfile for common recipes
+- Set up GitHub Actions: build, lint, goreleaser-check, release
+- Configure GoReleaser for linux/darwin/windows on amd64 and arm64
+- Remove auto-changelog and release-drafter
+- go build, go vet, go test, and goreleaser --snapshot all pass
+
+Still to implement / finish before public release:
+
+1. Repository setup
+   - Create a GitHub repo named "remembery" under alankiri
+   - Add the remote and push main:
+       git remote add origin https://github.com/alankiri/remembery.git
+       git push -u origin main
+   - Set the repo description, topics, and make it public
+
+2. README polish
+   - Add an "Installation" section with:
+       go install github.com/alankiri/remembery@latest
+       and a link to release binaries
+   - Add a quick "Usage" / keybindings section
+   - Add a screenshot, GIF, or asciinema demo
+   - Add CI and license badges
+   - Fix or remove the stray bullet:
+       "- - add new list items i could forget before"
+   - Add a note about the encrypted vault and that lost passwords cannot be recovered
+
+3. First release
+   - Tag v0.1.0:
+       git tag -a v0.1.0 -m "Initial release"
+       git push origin v0.1.0
+   - Verify the release workflow creates binaries for all platforms
+   - Write release notes manually (goreleaser changelog is disabled)
+
+4. Code / CLI finishing touches
+   - Add --version / version command
+   - Consider aligning go.mod go version (1.26.5) with README "Go 1.22+" if you want older-Go compatibility
+
+5. Optional repo polish
+   - Add CHANGELOG.md or rely on GitHub release notes
+   - Add CONTRIBUTING.md if you want outside contributions
+   - Add .editorconfig or .gitattributes if desired
+   - Configure branch protection rules for main
+   - Enable Dependabot security alerts
+
+Post-release roadmap (already in README):
+- OS-level notifications
+- Custom cross-platform audio backend
+- Tags, colors, import/export
