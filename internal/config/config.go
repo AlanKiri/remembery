@@ -9,21 +9,10 @@ import (
 )
 
 type Config struct {
-	Audio            bool    `yaml:"audio"`
-	Welcome          Welcome `yaml:"welcome"`
-	PromptedForVault bool    `yaml:"prompted_for_vault"`
+	PromptedForVault bool `yaml:"prompted_for_vault"`
 }
 
-type Welcome struct {
-	StudyDays []int `yaml:"study_days"`
-}
-
-var Default = Config{
-	Audio: true,
-	Welcome: Welcome{
-		StudyDays: []int{1, 2, 3, 4, 5, 6, 7},
-	},
-}
+var Default = Config{}
 
 func Load() (Config, error) {
 	if err := paths.EnsureDirs(); err != nil {

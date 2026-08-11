@@ -37,10 +37,12 @@ func NewNewModel(db *store.DB, eng *engine.Engine, levels []levels.Level) NewMod
 	}
 	m.inputs[0] = textinput.New()
 	m.inputs[0].Placeholder = "Label"
+	m.inputs[0].Prompt = "  "
 	m.inputs[0].Focus()
 	m.inputs[1] = textinput.New()
 	m.inputs[1].Placeholder = "Password"
 	m.inputs[1].EchoMode = textinput.EchoPassword
+	m.inputs[1].Prompt = "  "
 	m.focus = 0
 	m.levelIndex = 0
 	return m
@@ -68,7 +70,6 @@ func (m NewModel) createTrainer() error {
 
 // Update handles input and navigation when creating a new trainer.
 func (m NewModel) Update(msg tea.Msg) (NewModel, tea.Cmd) {
-	var cmds []tea.Cmd
 	key, ok := msg.(tea.KeyMsg)
 	if !ok {
 		return m, nil
@@ -111,6 +112,11 @@ func (m NewModel) Update(msg tea.Msg) (NewModel, tea.Cmd) {
 			if m.levelIndex < len(m.levels)-1 {
 				m.levelIndex++
 			}
+		case "enter":
+			if err := m.createTrainer(); err != nil {
+				return m, common.SetErr(err.Error())
+			}
+			return m, screen.ChangeScreen(screen.ScreenList)
 		}
 		return m, nil
 	}
@@ -126,7 +132,7 @@ func (m NewModel) Update(msg tea.Msg) (NewModel, tea.Cmd) {
 	if i >= 0 && i < 2 {
 		m.inputs[i], _ = m.inputs[i].Update(msg)
 	}
-	return m, tea.Batch(cmds...)
+	return m, nil
 }
 
 // View renders the new trainer form.
@@ -137,11 +143,12 @@ func (m NewModel) View(w, h int, errMsg string) string {
 
 	for i := range m.inputs {
 		name := []string{"Label", "Password"}[i]
-		prefix := "  "
+		style := lipgloss.NewStyle().Foreground(styles.Glow.Cream)
 		if i == m.focus {
-			prefix = "> "
+			style = lipgloss.NewStyle().Bold(true).Foreground(styles.Glow.Fuchsia)
 		}
-		b.WriteString(prefix + name + ":\n")
+		b.WriteString(style.Render("  " + name + ":"))
+		b.WriteString("\n")
 		b.WriteString(m.inputs[i].View())
 		b.WriteString("\n")
 	}
@@ -153,13 +160,12 @@ func (m NewModel) View(w, h int, errMsg string) string {
 	b.WriteString(styles.DimStyle.Render("  " + check + " Show password (ctrl+s to toggle)"))
 	b.WriteString("\n\n")
 
+	b.WriteString("  ")
 	if m.focus == 2 {
-		b.WriteString(lipgloss.NewStyle().
-			Bold(true).
-			Foreground(styles.Glow.Fuchsia).
-			Render("> Familiarity level (j/k to select)"))
+		b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(styles.Glow.Fuchsia).Render("Familiarity level"))
+		b.WriteString(lipgloss.NewStyle().Foreground(styles.Glow.Dim).Render(" (j/k to select)"))
 	} else {
-		b.WriteString(styles.DimStyle.Render("  Familiarity level"))
+		b.WriteString(lipgloss.NewStyle().Foreground(styles.Glow.Cream).Render("Familiarity level"))
 	}
 	b.WriteString("\n")
 	descWidth := w - 26
@@ -174,7 +180,7 @@ func (m NewModel) View(w, h int, errMsg string) string {
 				Background(lipgloss.Color(l.Color)).
 				Foreground(lipgloss.Color("#fff")).
 				Width(18).
-				Render(fmt.Sprintf("> Level %d", l.Number))
+				Render(fmt.Sprintf("  Level %d", l.Number))
 		} else {
 			left = lipgloss.NewStyle().
 				Foreground(lipgloss.Color(l.Color)).
@@ -200,7 +206,7 @@ func (m NewModel) View(w, h int, errMsg string) string {
 	}
 
 	body := strings.TrimSuffix(b.String(), "\n")
-	footer := styles.DimStyle.Render("tab: switch focus • j/k: choose level • enter: save • esc: cancel")
+	footer := styles.DimStyle.Render("tab: switch focus  enter: save  esc: cancel")
 
 	if h > 0 {
 		bodyLines := strings.Count(body, "\n") + 1

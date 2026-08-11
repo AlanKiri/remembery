@@ -212,7 +212,7 @@ func (m unlockModel) View() string {
 		body.WriteString("\n\n")
 		body.WriteString("If you forgot your master password, resetting is the only way to start over.\n\n")
 		body.WriteString(lipgloss.NewStyle().Foreground(styles.Glow.Green).Render("[y]es"))
-		body.WriteString(" to confirm • ")
+		body.WriteString(" to confirm ")
 		body.WriteString(lipgloss.NewStyle().Foreground(styles.Glow.Red).Render("[n]o"))
 		body.WriteString(" to cancel")
 		body.WriteString("\n")
@@ -226,19 +226,19 @@ func (m unlockModel) View() string {
 	var footerText string
 	switch m.state {
 	case stateChoice:
-		footerText = "y: enable • n: skip • q: quit"
+		footerText = "y: enable  n: skip  q: quit"
 	case statePassword:
 		if m.creating {
-			footerText = "enter: continue • ctrl+s: show • q: quit"
+			footerText = "enter: continue  ctrl+s: show  q: quit"
 		} else {
-			footerText = styles.DimStyle.Render("enter: unlock • ctrl+s: show • ") +
-				lipgloss.NewStyle().Foreground(styles.Glow.Red).Render("r: reset") +
-				styles.DimStyle.Render(" • q: quit")
+			footerText = styles.DimStyle.Render("enter: unlock  ctrl+s: show") +
+				lipgloss.NewStyle().Foreground(styles.Glow.Red).Render("  r: reset") +
+				styles.DimStyle.Render("  q: quit")
 		}
 	case stateConfirm:
-		footerText = "enter: create • ctrl+s: show • q: quit"
+		footerText = "enter: create  ctrl+s: show  q: quit"
 	case stateResetWarn:
-		footerText = "y: confirm • n: cancel • q: quit"
+		footerText = "y: confirm  n: cancel  q: quit"
 	}
 	footer := styles.DimStyle.Padding(0, 2).Render(footerText)
 

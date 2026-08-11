@@ -53,7 +53,7 @@ func DBFile() string {
 
 func EnsureDirs() error {
 	for _, d := range []string{ConfigDir(), DataDir()} {
-		if err := os.MkdirAll(d, 0o755); err != nil {
+		if err := os.MkdirAll(d, 0o700); err != nil {
 			return err
 		}
 	}

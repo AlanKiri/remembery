@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
-	"sort"
-	"strings"
 	"time"
 
 	"github.com/alankiri/password-memorizer-tui/internal/levels"
@@ -90,20 +88,8 @@ func (e *Engine) maskForPassword(password string, level levels.Level, sessionsAt
 	}, nil
 }
 
-func (e *Engine) Hint(mask Mask) (string, []rune) {
-	return string(mask.Password), mask.Password
-}
-
 func (e *Engine) Validate(input, password string) bool {
 	return input == password
-}
-
-func (e *Engine) ValidateRunes(input, password []rune) []bool {
-	ok := make([]bool, len(input))
-	for i := 0; i < len(input) && i < len(password); i++ {
-		ok[i] = input[i] == password[i]
-	}
-	return ok
 }
 
 func (e *Engine) CanAdvance(trainer *store.Trainer) (bool, int) {
@@ -114,9 +100,18 @@ func (e *Engine) CanAdvance(trainer *store.Trainer) (bool, int) {
 	if trainer.SessionsAtLevel < level.RequiredSessionsToProgress {
 		return false, trainer.Level
 	}
-	next := trainer.Level + 1
-	_, ok = e.LevelConfig(next)
-	if !ok {
+
+	var next int
+	found := false
+	for _, l := range e.Levels {
+		if l.Number > trainer.Level {
+			if !found || l.Number < next {
+				next = l.Number
+				found = true
+			}
+		}
+	}
+	if !found {
 		return false, trainer.Level
 	}
 	return true, next
@@ -182,39 +177,6 @@ func (e *Engine) Schedule(t store.Trainer) (availableAt, dueAt time.Time, status
 func (e *Engine) Availability(t store.Trainer) (status string, canCount bool) {
 	_, _, status, canCount = e.Schedule(t)
 	return
-}
-
-func (e *Engine) HiddenPositions(mask Mask) []int {
-	var out []int
-	for i := range mask.Password {
-		if mask.Hidden[i] {
-			out = append(out, i)
-		}
-	}
-	sort.Ints(out)
-	return out
-}
-
-func (e *Engine) Display(input string, mask Mask, validation []bool) string {
-	var parts []string
-	ir := []rune(input)
-	pr := mask.Password
-
-	for i := 0; i < len(pr); i++ {
-		var ch string
-		if i < len(ir) {
-			ch = string(ir[i])
-			if len(validation) > i && !validation[i] {
-				ch = "[" + ch + "]"
-			}
-		} else if mask.Hidden[i] {
-			ch = "•"
-		} else {
-			ch = string(pr[i])
-		}
-		parts = append(parts, ch)
-	}
-	return strings.Join(parts, " ")
 }
 
 func clamp(v, lo, hi int) int {

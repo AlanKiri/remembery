@@ -17,7 +17,7 @@ const (
 	ScreenTrain
 	ScreenCongrats
 	ScreenLevel
-	ScreenSettings
+	ScreenVault
 )
 
 // ChangeScreenMsg requests the main model to switch to a different screen.

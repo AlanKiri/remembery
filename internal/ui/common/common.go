@@ -2,7 +2,6 @@ package common
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
@@ -20,29 +19,6 @@ func FormatDuration(d time.Duration) string {
 		return fmt.Sprintf("%dh %dm", h, m)
 	}
 	return fmt.Sprintf("%dm", m)
-}
-
-// WrapWords wraps text so that no line exceeds the given width.
-func WrapWords(text string, width int) string {
-	words := strings.Fields(text)
-	var b strings.Builder
-	var line string
-	for _, w := range words {
-		if line != "" && len(line)+1+len(w) > width {
-			b.WriteString(line)
-			b.WriteString("\n")
-			line = w
-		} else {
-			if line != "" {
-				line += " "
-			}
-			line += w
-		}
-	}
-	if line != "" {
-		b.WriteString(line)
-	}
-	return b.String()
 }
 
 // LevelColor returns the color for the given level number.
@@ -75,6 +51,14 @@ func BlurPreview(eng *engine.Engine, levels []levels.Level, password string, lev
 	if err != nil {
 		return ""
 	}
-	preview := lipgloss.NewStyle().Foreground(styles.Glow.DullFuchsia).Render(mask.Blurred)
+	out := make([]rune, len(mask.Password))
+	for i := range out {
+		if mask.Hidden[i] {
+			out[i] = 'x'
+		} else {
+			out[i] = '-'
+		}
+	}
+	preview := lipgloss.NewStyle().Foreground(styles.Glow.DullFuchsia).Render(string(out))
 	return "\n" + styles.DimStyle.Render("Blur preview: ") + preview
 }

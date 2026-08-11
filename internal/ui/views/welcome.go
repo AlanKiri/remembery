@@ -90,7 +90,7 @@ func (m WelcomeModel) View(w, h int) string {
 
 	body := lipgloss.NewStyle().
 		Bold(true).
-		Render(fmt.Sprintf("Pending sessions: %d\nTotal trainers: %d",
+		Render(fmt.Sprintf("Pending  sessions: %d\nTotal  trainers: %d",
 			m.due, m.total))
 
 	content := title

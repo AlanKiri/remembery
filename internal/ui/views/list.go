@@ -107,8 +107,8 @@ func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 		m.cursor = 0
 	case "G":
 		m.cursor = len(m.Trainers) - 1
-	case "s":
-		return m, screen.ChangeScreen(screen.ScreenSettings)
+	case "v":
+		return m, screen.ChangeScreen(screen.ScreenVault)
 	}
 	return m, nil
 }
@@ -117,7 +117,8 @@ func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 func (m ListModel) View(w, h int, errMsg string) string {
 	var list strings.Builder
 	if len(m.Trainers) == 0 {
-		list.WriteString("No Trainers. Press n to add one.")
+		list.WriteString("No Trainers. ")
+		list.WriteString(styles.DimStyle.Render("\nPress n to add one."))
 	} else {
 		for i, t := range m.Trainers {
 			label := t.Label
@@ -144,7 +145,7 @@ func (m ListModel) View(w, h int, errMsg string) string {
 		list.WriteString(lipgloss.NewStyle().Foreground(styles.Glow.Red).Render("error: " + errMsg))
 	}
 
-	title := styles.RenderTitle("passmem")
+	title := styles.RenderTitle("List")
 	if !m.db.HasVault() {
 		title += "   " + styles.DimStyle.Render("Not encrypted")
 	}
@@ -154,7 +155,7 @@ func (m ListModel) View(w, h int, errMsg string) string {
 	}
 	body := title + "\n\n" + lipgloss.JoinHorizontal(lipgloss.Top, list.String(), "  ", right)
 
-	guide := "n: new  e: edit  d: delete  r: refresh  s: settings  enter: train  q: quit"
+	guide := "n: new  e: edit  d: delete  r: refresh  v: vault  enter: train  q: quit"
 	footer := styles.DimStyle.Render(guide)
 
 	if h > 0 {
@@ -208,7 +209,7 @@ func (m ListModel) trainerDetailsView(t store.Trainer) string {
 		statusText = lipgloss.NewStyle().Foreground(styles.Glow.Red).Render(status)
 	}
 
-	sessions := fmt.Sprintf("Sessions at level: %d / %d", t.SessionsAtLevel, level.RequiredSessionsToProgress) +
+	sessions := fmt.Sprintf("Sessions at  level: %d / %d", t.SessionsAtLevel, level.RequiredSessionsToProgress) +
 		styles.DimStyle.Render(fmt.Sprintf("  (%d to progress)", needed))
 
 	lines := []string{
@@ -224,7 +225,7 @@ func (m ListModel) trainerDetailsView(t store.Trainer) string {
 	}
 	lines = append(lines,
 		fmt.Sprintf("Status: %s", statusText),
-		styles.DimStyle.Render(fmt.Sprintf("Total sessions: %d", t.TotalSessions)),
+		styles.DimStyle.Render(fmt.Sprintf("Total  sessions: %d", t.TotalSessions)),
 		styles.DimStyle.Render(fmt.Sprintf("Created: %s", t.CreatedAt.Format("2006-01-02"))),
 	)
 

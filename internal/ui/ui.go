@@ -36,10 +36,10 @@ type Model struct {
 	edit   views.EditModel
 	delete views.DeleteModel
 
-	early    views.EarlyModel
-	level    views.LevelModel
-	train    views.TrainModel
-	settings views.SettingsModel
+	early views.EarlyModel
+	level views.LevelModel
+	train views.TrainModel
+	vault views.VaultModel
 }
 
 func Run() error {
@@ -146,8 +146,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.To == screen.ScreenNew {
 			m.new = views.NewNewModel(m.db, m.eng, m.levels)
 		}
-		if msg.To == screen.ScreenSettings {
-			m.settings = views.NewSettingsModel(m.db, &m.cfg, m.eng, m.levels)
+		if msg.To == screen.ScreenVault {
+			m.vault = views.NewVaultModel(m.db, &m.cfg, m.eng, m.levels)
 		}
 		return m, nil
 	case common.StartTrainMsg:
@@ -171,7 +171,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.LevelTrainer != nil {
 			m.level = views.NewLevelModel(m.db, m.eng, msg.LevelTrainer, msg.LevelOffer)
 		}
-		return m, screen.ChangeScreen(screen.ScreenCongrats)
+		m.screen = screen.ScreenCongrats
+		m.errMsg = ""
+		return m, nil
 	case common.StartDeleteMsg:
 		m.delete = views.NewDeleteModel(m.db, *msg.Trainer)
 		m.screen = screen.ScreenDelete
@@ -229,9 +231,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.level = newLevel
 			return m, cmd
 		}
-		if m.screen == screen.ScreenSettings {
-			newSettings, cmd := m.settings.Update(msg)
-			m.settings = newSettings
+		if m.screen == screen.ScreenVault {
+			newVault, cmd := m.vault.Update(msg)
+			m.vault = newVault
 			return m, cmd
 		}
 	case common.WelcomeTickMsg:
@@ -263,7 +265,7 @@ func (m Model) View() string {
 	case screen.ScreenEdit:
 		inner = m.edit.View(m.width, m.height, m.errMsg)
 	case screen.ScreenDelete:
-		inner = m.delete.View()
+		inner = m.delete.View(m.width, m.height)
 	case screen.ScreenEarlyTrain:
 		inner = m.early.View(m.width, m.height)
 	case screen.ScreenTrain:
@@ -272,8 +274,8 @@ func (m Model) View() string {
 		inner = m.congrats.View()
 	case screen.ScreenLevel:
 		inner = m.level.View()
-	case screen.ScreenSettings:
-		inner = m.settings.View(m.width, m.height)
+	case screen.ScreenVault:
+		inner = m.vault.View(m.width, m.height)
 	default:
 		inner = "unknown screen"
 	}

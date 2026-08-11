@@ -173,7 +173,7 @@ func (m *TrainModel) finishSession() tea.Cmd {
 			return screen.ChangeScreen(screen.ScreenList, err.Error())
 		}
 
-		b.WriteString(fmt.Sprintf("Repetitions: %d\nErrors: %d\nTotal sessions: %d\n",
+		b.WriteString(fmt.Sprintf("Repetitions: %d\nErrors: %d\nTotal  sessions: %d\n",
 			m.attempt, m.tErrors, m.trainer.TotalSessions))
 		nextAvailable := now.Add(time.Duration(m.mask.Level.SessionIntervalHours) * time.Hour)
 		b.WriteString(fmt.Sprintf("Next available in %s\n", common.FormatDuration(time.Until(nextAvailable))))
@@ -269,7 +269,7 @@ func (m TrainModel) View(w, h int) string {
 	b.WriteString(lipgloss.NewStyle().Foreground(styles.Glow.Dim).Render(status))
 
 	body := strings.TrimSuffix(b.String(), "\n")
-	footer := styles.DimStyle.Render("type • Enter: submit • Backspace: remove • Ctrl+H: toggle hint • Esc: quit")
+	footer := styles.DimStyle.Render("type  Enter: submit  Backspace: remove  Ctrl+H: toggle hint  Esc: quit")
 
 	if h > 0 {
 		bodyLines := strings.Count(body, "\n") + 1

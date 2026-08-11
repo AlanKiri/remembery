@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -36,12 +37,13 @@ func NewEditModel(db *store.DB, eng *engine.Engine, levels []levels.Level, t *st
 		levels:     levels,
 		trainer:    t,
 		levelIndex: common.FindLevelIndex(levels, t.Level),
-		focus:      0,
+		focus:      1,
 	}
 	m.inputs[0] = textinput.New()
 	m.inputs[0].Placeholder = "Label"
+	m.inputs[0].Prompt = "  "
 	m.inputs[0].SetValue(t.Label)
-	m.inputs[0].Focus()
+	m.inputs[0].Blur()
 	return m
 }
 
@@ -64,6 +66,8 @@ func (m *EditModel) saveEdit() error {
 	if m.trainer.Level != newLevel {
 		m.trainer.Level = newLevel
 		m.trainer.SessionsAtLevel = 0
+		m.trainer.LastCountedSession = nil
+		m.trainer.LastResetDate = time.Now()
 	}
 	return m.db.UpdateTrainer(*m.trainer)
 }
@@ -103,6 +107,11 @@ func (m EditModel) Update(msg tea.Msg) (EditModel, tea.Cmd) {
 			if m.levelIndex < len(m.levels)-1 {
 				m.levelIndex++
 			}
+		case "enter":
+			if err := m.saveEdit(); err != nil {
+				return m, common.SetErr(err.Error())
+			}
+			return m, screen.ChangeScreen(screen.ScreenList)
 		}
 		return m, nil
 	}
@@ -125,21 +134,21 @@ func (m EditModel) View(w, h int, errMsg string) string {
 	b.WriteString(styles.RenderTitle("Edit trainer"))
 	b.WriteString("\n\n")
 
-	prefix := "> "
-	if m.focus != 0 {
-		prefix = "  "
+	style := lipgloss.NewStyle().Foreground(styles.Glow.Cream)
+	if m.focus == 0 {
+		style = lipgloss.NewStyle().Bold(true).Foreground(styles.Glow.Fuchsia)
 	}
-	b.WriteString(prefix + "Label:\n")
+	b.WriteString(style.Render("  Label:"))
+	b.WriteString("\n")
 	b.WriteString(m.inputs[0].View())
 	b.WriteString("\n\n")
 
+	b.WriteString("  ")
 	if m.focus == 1 {
-		b.WriteString(lipgloss.NewStyle().
-			Bold(true).
-			Foreground(styles.Glow.Fuchsia).
-			Render("> Familiarity level (j/k to select)"))
+		b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(styles.Glow.Fuchsia).Render("Familiarity level"))
+		b.WriteString(lipgloss.NewStyle().Foreground(styles.Glow.Dim).Render(" (j/k to select)"))
 	} else {
-		b.WriteString(styles.DimStyle.Render("  Familiarity level"))
+		b.WriteString(lipgloss.NewStyle().Foreground(styles.Glow.Cream).Render("Familiarity level"))
 	}
 	b.WriteString("\n")
 
@@ -155,7 +164,7 @@ func (m EditModel) View(w, h int, errMsg string) string {
 				Background(lipgloss.Color(l.Color)).
 				Foreground(lipgloss.Color("#fff")).
 				Width(18).
-				Render(fmt.Sprintf("> Level %d", l.Number))
+				Render(fmt.Sprintf("  Level %d", l.Number))
 		} else {
 			left = lipgloss.NewStyle().
 				Foreground(lipgloss.Color(l.Color)).
@@ -183,7 +192,7 @@ func (m EditModel) View(w, h int, errMsg string) string {
 	}
 
 	body := strings.TrimSuffix(b.String(), "\n")
-	footer := styles.DimStyle.Render("tab: switch focus • j/k: choose level • enter: save • esc: cancel")
+	footer := styles.DimStyle.Render("tab: switch focus  enter: save  esc: cancel")
 
 	if h > 0 {
 		bodyLines := strings.Count(body, "\n") + 1

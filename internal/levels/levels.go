@@ -7,6 +7,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/alankiri/password-memorizer-tui/internal/consts"
 	"github.com/alankiri/password-memorizer-tui/internal/paths"
 )
 
@@ -20,10 +21,8 @@ type Level struct {
 	BaseBlurPercent            int    `yaml:"base_blur_percent"`
 	BlurStepPercent            int    `yaml:"blur_step_percent"`
 	MaxBlurPercent             int    `yaml:"max_blur_percent"`
-	HintReductionPercent       int    `yaml:"hint_reduction_percent"`
 	RequiredSessionsToProgress int    `yaml:"required_sessions_to_progress"`
 	SessionIntervalHours       int    `yaml:"session_interval_hours"`
-	TypingValidationMode       string `yaml:"typing_validation_mode"`
 	Description                string `yaml:"description"`
 }
 
@@ -59,14 +58,12 @@ var FieldDocs = []struct {
 	{Name: "number", Desc: "Level identifier, must be unique and increasing."},
 	{Name: "color", Desc: "Hex color used for the level in the UI."},
 	{Name: "repetition_count", Desc: "How many times the password is typed in a complete training session."},
-	{Name: "inter_attempt_delay", Desc: "Milliseconds to wait before the next attempt is allowed."},
+	{Name: "inter_attempt_delay", Desc: "Seconds to wait between typing rounds."},
 	{Name: "base_blur_percent", Desc: "Percentage of characters blurred at the start of a level (0-100)."},
-	{Name: "blur_step_percent", Desc: "How much blur increases after each failed attempt (0-100)."},
+	{Name: "blur_step_percent", Desc: "How much blur increases after each counted session (0-100)."},
 	{Name: "max_blur_percent", Desc: "Maximum blur that can be applied to a password (0-100)."},
-	{Name: "hint_reduction_percent", Desc: "How much the hint shrinks after each attempt (0-100)."},
 	{Name: "required_sessions_to_progress", Desc: "How many counted training sessions are needed to advance."},
 	{Name: "session_interval_hours", Desc: "Minimum hours between counted training sessions."},
-	{Name: "typing_validation_mode", Desc: "Training strictness. 'allow_highlight' is the current default."},
 	{Name: "description", Desc: "Short description shown in the settings screen."},
 }
 
@@ -74,7 +71,7 @@ var FieldDocs = []struct {
 // documents every field so the file is understandable without the app.
 func Save(levels []Level) error {
 	var b strings.Builder
-	b.WriteString("# passmem level configuration\n")
+	b.WriteString(fmt.Sprintf("# %s level configuration\n", consts.AppName))
 	b.WriteString("#\n")
 	for _, d := range FieldDocs {
 		b.WriteString(fmt.Sprintf("# %s: %s\n", d.Name, d.Desc))

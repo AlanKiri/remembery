@@ -52,6 +52,7 @@ func New() (*DB, error) {
 	}
 	st := &DB{db: sqldb}
 	if err := st.migrate(); err != nil {
+		_ = sqldb.Close()
 		return nil, err
 	}
 	return st, nil
@@ -77,8 +78,14 @@ func (st *DB) ChangeVault(newPassword string) (*vault.Vault, error) {
 	if st.vault == nil {
 		return nil, errors.New("no active vault")
 	}
+	tx, err := st.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
 	oldV := st.vault
-	rows, err := st.db.Query("SELECT id, password FROM trainers")
+	rows, err := tx.Query("SELECT id, password FROM trainers")
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +113,10 @@ func (st *DB) ChangeVault(newPassword string) (*vault.Vault, error) {
 		return nil, err
 	}
 
-	newV, err := st.createVaultOnly(newPassword)
+	if _, err := tx.Exec("DELETE FROM vault"); err != nil {
+		return nil, err
+	}
+	newV, err := createVaultForTx(tx, newPassword)
 	if err != nil {
 		return nil, err
 	}
@@ -115,15 +125,18 @@ func (st *DB) ChangeVault(newPassword string) (*vault.Vault, error) {
 		if err != nil {
 			return nil, err
 		}
-		if _, err := st.db.Exec("UPDATE trainers SET password = ? WHERE id = ?", cipher, p.id); err != nil {
+		if _, err := tx.Exec("UPDATE trainers SET password = ? WHERE id = ?", cipher, p.id); err != nil {
 			return nil, err
 		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
 	}
 	st.vault = newV
 	return newV, nil
 }
 
-func (st *DB) createVaultOnly(password string) (*vault.Vault, error) {
+func createVaultForTx(tx *sql.Tx, password string) (*vault.Vault, error) {
 	salt := make([]byte, 16)
 	if _, err := rand.Read(salt); err != nil {
 		return nil, err
@@ -138,10 +151,7 @@ func (st *DB) createVaultOnly(password string) (*vault.Vault, error) {
 		return nil, err
 	}
 	saltB64 := base64.StdEncoding.EncodeToString(salt)
-	if _, err := st.db.Exec("DELETE FROM vault"); err != nil {
-		return nil, err
-	}
-	if _, err := st.db.Exec("INSERT INTO vault (salt, canary) VALUES (?, ?)", saltB64, canary); err != nil {
+	if _, err := tx.Exec("INSERT INTO vault (salt, canary) VALUES (?, ?)", saltB64, canary); err != nil {
 		return nil, err
 	}
 	return v, nil
@@ -151,7 +161,13 @@ func (st *DB) DecryptVault() error {
 	if st.vault == nil {
 		return errors.New("no active vault")
 	}
-	rows, err := st.db.Query("SELECT id, password FROM trainers")
+	tx, err := st.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	rows, err := tx.Query("SELECT id, password FROM trainers")
 	if err != nil {
 		return err
 	}
@@ -178,11 +194,14 @@ func (st *DB) DecryptVault() error {
 		return err
 	}
 	for _, u := range updates {
-		if _, err := st.db.Exec("UPDATE trainers SET password = ? WHERE id = ?", u.plain, u.id); err != nil {
+		if _, err := tx.Exec("UPDATE trainers SET password = ? WHERE id = ?", u.plain, u.id); err != nil {
 			return err
 		}
 	}
-	if _, err := st.db.Exec("DELETE FROM vault"); err != nil {
+	if _, err := tx.Exec("DELETE FROM vault"); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
 		return err
 	}
 	st.vault = nil
@@ -190,11 +209,17 @@ func (st *DB) DecryptVault() error {
 }
 
 func (st *DB) CreateVaultAndEncrypt(password string) (*vault.Vault, error) {
-	v, err := st.CreateVault(password)
+	tx, err := st.db.Begin()
 	if err != nil {
 		return nil, err
 	}
-	rows, err := st.db.Query("SELECT id, password FROM trainers")
+	defer tx.Rollback()
+
+	v, err := createVaultForTx(tx, password)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := tx.Query("SELECT id, password FROM trainers")
 	if err != nil {
 		return nil, err
 	}
@@ -221,29 +246,29 @@ func (st *DB) CreateVaultAndEncrypt(password string) (*vault.Vault, error) {
 		return nil, err
 	}
 	for _, u := range updates {
-		if _, err := st.db.Exec("UPDATE trainers SET password = ? WHERE id = ?", u.cipher, u.id); err != nil {
+		if _, err := tx.Exec("UPDATE trainers SET password = ? WHERE id = ?", u.cipher, u.id); err != nil {
 			return nil, err
 		}
 	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	st.vault = v
 	return v, nil
 }
 
 func (st *DB) CreateVault(password string) (*vault.Vault, error) {
-	salt := make([]byte, 16)
-	if _, err := rand.Read(salt); err != nil {
-		return nil, err
-	}
-	key, err := vault.DeriveKey(password, salt)
+	tx, err := st.db.Begin()
 	if err != nil {
 		return nil, err
 	}
-	v := vault.New(key)
-	canary, err := v.Encrypt(vault.Canary)
+	defer tx.Rollback()
+
+	v, err := createVaultForTx(tx, password)
 	if err != nil {
 		return nil, err
 	}
-	saltB64 := base64.StdEncoding.EncodeToString(salt)
-	if _, err := st.db.Exec("INSERT INTO vault (salt, canary) VALUES (?, ?)", saltB64, canary); err != nil {
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	st.vault = v
