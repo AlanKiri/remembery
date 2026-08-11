@@ -6,9 +6,10 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/alankiri/password-memorizer-tui/internal/config"
-	"github.com/alankiri/password-memorizer-tui/internal/paths"
-	"github.com/alankiri/password-memorizer-tui/internal/ui"
+	"github.com/alankiri/remembery/internal/config"
+	"github.com/alankiri/remembery/internal/consts"
+	"github.com/alankiri/remembery/internal/paths"
+	"github.com/alankiri/remembery/internal/ui"
 )
 
 func main() {
@@ -64,30 +65,30 @@ func editConfig() error {
 }
 
 func helpText() string {
-	return `mnemo - Terminal trainer for memorizing passwords.
+	return fmt.Sprintf(`%s - Terminal trainer for memorizing passwords.
 
 Usage:
-  mnemo [command]
-  mnemo [flags]
+  %s [command]
+  %s [flags]
 
 Available Commands:
-  config      Edit the mnemo config file in $EDITOR
+  config      Edit the %s config file in $EDITOR
   help        Help about any command
 
 Flags:
-  -h, --help   help for mnemo
+  -h, --help   help for %s
 
-Use "mnemo [command] --help" for more information about a command.
-`
+Use "%s [command] --help" for more information about a command.
+`, consts.AppName, consts.AppName, consts.AppName, consts.AppName, consts.AppName, consts.AppName)
 }
 
 func configHelpText() string {
-	return `Edit the mnemo config file in $EDITOR.
+	return fmt.Sprintf(`Edit the %s config file in $EDITOR.
 
 Usage:
-  mnemo config [flags]
+  %s config [flags]
 
 Flags:
   -h, --help   help for config
-`
+`, consts.AppName, consts.AppName)
 }

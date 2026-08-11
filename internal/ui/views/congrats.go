@@ -1,8 +1,8 @@
 package views
 
 import (
-	"github.com/alankiri/password-memorizer-tui/internal/ui/screen"
-	"github.com/alankiri/password-memorizer-tui/internal/ui/styles"
+	"github.com/alankiri/remembery/internal/ui/screen"
+	"github.com/alankiri/remembery/internal/ui/styles"
 	tea "github.com/charmbracelet/bubbletea"
 )
 

@@ -1,6 +1,5 @@
 # Binaries
-/passmem
-/password-memorizer-tui
+/remembery
 *.exe
 
 # Go

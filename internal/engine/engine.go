@@ -6,8 +6,8 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/alankiri/password-memorizer-tui/internal/levels"
-	"github.com/alankiri/password-memorizer-tui/internal/store"
+	"github.com/alankiri/remembery/internal/levels"
+	"github.com/alankiri/remembery/internal/store"
 )
 
 type Engine struct {

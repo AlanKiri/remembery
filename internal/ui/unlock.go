@@ -7,9 +7,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/alankiri/password-memorizer-tui/internal/store"
-	"github.com/alankiri/password-memorizer-tui/internal/ui/styles"
-	"github.com/alankiri/password-memorizer-tui/internal/vault"
+	"github.com/alankiri/remembery/internal/store"
+	"github.com/alankiri/remembery/internal/ui/styles"
+	"github.com/alankiri/remembery/internal/vault"
 )
 
 type unlockState int

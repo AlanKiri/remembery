@@ -1,7 +1,7 @@
 package consts
 
 const (
-	AppName           = "mnemo"
+	AppName           = "remembery"
 	DefaultTermWidth  = 80
 	DefaultTermHeight = 24
 )

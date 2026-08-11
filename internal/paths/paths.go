@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/alankiri/password-memorizer-tui/internal/consts"
+	"github.com/alankiri/remembery/internal/consts"
 )
 
 func home() string {

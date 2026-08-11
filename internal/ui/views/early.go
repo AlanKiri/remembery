@@ -8,11 +8,11 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/alankiri/password-memorizer-tui/internal/engine"
-	"github.com/alankiri/password-memorizer-tui/internal/store"
-	"github.com/alankiri/password-memorizer-tui/internal/ui/common"
-	"github.com/alankiri/password-memorizer-tui/internal/ui/screen"
-	"github.com/alankiri/password-memorizer-tui/internal/ui/styles"
+	"github.com/alankiri/remembery/internal/engine"
+	"github.com/alankiri/remembery/internal/store"
+	"github.com/alankiri/remembery/internal/ui/common"
+	"github.com/alankiri/remembery/internal/ui/screen"
+	"github.com/alankiri/remembery/internal/ui/styles"
 )
 
 // EarlyModel shows the early-training warning and lets the user practice anyway.

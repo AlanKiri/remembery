@@ -10,8 +10,8 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/alankiri/password-memorizer-tui/internal/paths"
-	"github.com/alankiri/password-memorizer-tui/internal/vault"
+	"github.com/alankiri/remembery/internal/paths"
+	"github.com/alankiri/remembery/internal/vault"
 )
 
 type Trainer struct {

@@ -18,7 +18,7 @@ const (
 )
 
 // Canary is a known plaintext we encrypt to test the key on unlock.
-const Canary = "passmem-vault-v1"
+const Canary = "remembery-vault-v1"
 
 // DeriveKey derives a 32-byte AES key from a password and salt using scrypt.
 func DeriveKey(password string, salt []byte) ([]byte, error) {

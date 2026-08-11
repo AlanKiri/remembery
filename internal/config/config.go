@@ -5,8 +5,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/alankiri/password-memorizer-tui/internal/levels"
-	"github.com/alankiri/password-memorizer-tui/internal/paths"
+	"github.com/alankiri/remembery/internal/levels"
+	"github.com/alankiri/remembery/internal/paths"
 )
 
 type Config struct {

@@ -1,11 +1,11 @@
 version: 2
 
-project_name: password-memorizer-tui
+project_name: remembery
 
 builds:
-  - id: password-memorizer-tui
+  - id: remembery
     main: .
-    binary: password-memorizer-tui
+    binary: remembery
     env:
       - CGO_ENABLED=0
     goos:
@@ -30,13 +30,4 @@ checksum:
   name_template: "checksums.txt"
 
 changelog:
-  use: git
-  sort: asc
-  filters:
-    exclude:
-      - "^docs:"
-      - "^test:"
-      - "^chore:"
-      - "^style:"
-      - "^refactor:"
-      - "^Merge"
+  disable: true

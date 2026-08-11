@@ -5,8 +5,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/alankiri/password-memorizer-tui/internal/store"
-	"github.com/alankiri/password-memorizer-tui/internal/ui/screen"
+	"github.com/alankiri/remembery/internal/store"
+	"github.com/alankiri/remembery/internal/ui/screen"
 )
 
 // SetErrMsg sets the shared errMsg field on the main model.

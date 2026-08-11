@@ -7,10 +7,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/alankiri/password-memorizer-tui/internal/consts"
-	"github.com/alankiri/password-memorizer-tui/internal/ui/common"
-	"github.com/alankiri/password-memorizer-tui/internal/ui/screen"
-	"github.com/alankiri/password-memorizer-tui/internal/ui/styles"
+	"github.com/alankiri/remembery/internal/consts"
+	"github.com/alankiri/remembery/internal/ui/common"
+	"github.com/alankiri/remembery/internal/ui/screen"
+	"github.com/alankiri/remembery/internal/ui/styles"
 )
 
 // WelcomeModel is the child model for the welcome screen.

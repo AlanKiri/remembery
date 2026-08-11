@@ -6,9 +6,9 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/alankiri/password-memorizer-tui/internal/engine"
-	"github.com/alankiri/password-memorizer-tui/internal/levels"
-	"github.com/alankiri/password-memorizer-tui/internal/ui/styles"
+	"github.com/alankiri/remembery/internal/engine"
+	"github.com/alankiri/remembery/internal/levels"
+	"github.com/alankiri/remembery/internal/ui/styles"
 )
 
 // FormatDuration formats a duration as hours and minutes.
