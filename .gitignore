@@ -6,6 +6,9 @@
 # Go
 /vendor/
 
+# GoReleaser
+dist/
+
 # Local data
 data.db
 *.db
