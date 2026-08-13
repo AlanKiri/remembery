@@ -17,9 +17,25 @@ builds:
       - arm64
 
 archives:
-  - formats: [binary]
+  - id: raw
+    ids: [remembery]
+    formats: [binary]
     name_template: >-
       {{ .Binary }}_
+      {{- .Version }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "arm64" }}arm64
+      {{- else }}{{ .Arch }}{{ end }}
+
+  - id: pkg
+    ids: [remembery]
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: >-
+      {{ .ProjectName }}_
       {{- .Version }}_
       {{- title .Os }}_
       {{- if eq .Arch "amd64" }}x86_64
@@ -31,3 +47,42 @@ checksum:
 
 changelog:
   disable: true
+
+homebrew_casks:
+  - repository:
+      owner: alankiri
+      name: homebrew-tap
+      token: "{{ .Env.GORELEASER_GITHUB_PERSONAL_ACCESS_TOKEN }}"
+    ids: [pkg]
+    homepage: "https://github.com/alankiri/remembery"
+    description: "A small TUI for memorizing strings"
+    license: "MIT"
+    binaries:
+      - remembery
+
+scoops:
+  - repository:
+      owner: alankiri
+      name: scoop-bucket
+      token: "{{ .Env.GORELEASER_GITHUB_PERSONAL_ACCESS_TOKEN }}"
+    ids: [pkg]
+    homepage: "https://github.com/alankiri/remembery"
+    description: "A small TUI for memorizing strings"
+    license: "MIT"
+
+snapcrafts:
+  - ids: [remembery]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    title: remembery
+    summary: "A small TUI for memorizing strings"
+    description: |
+      Remembery is a TUI for helping you memorize passwords,
+      phone numbers, important IDs, and any other string.
+    grade: stable
+    confinement: classic
+    base: core22
+    license: MIT
+    publish: false
+    apps:
+      remembery:
+        command: remembery

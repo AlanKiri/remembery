@@ -3,15 +3,17 @@ name: release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 permissions:
   contents: write
-  packages: write
 
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      GORELEASER_GITHUB_PERSONAL_ACCESS_TOKEN: ${{ secrets.GORELEASER_GITHUB_PERSONAL_ACCESS_TOKEN }}
+      SNAPCRAFT_TOKEN: ${{ secrets.SNAPCRAFT_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -21,11 +23,29 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Set up Snapcraft
+        if: ${{ env.SNAPCRAFT_TOKEN != '' }}
+        uses: samuelmeuli/action-snapcraft@v3
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_TOKEN }}
+
+      - name: Determine GoReleaser skip flags
+        id: flags
+        run: |
+          skip=""
+          if [ -z "$GORELEASER_GITHUB_PERSONAL_ACCESS_TOKEN" ]; then
+            skip="$skip --skip=homebrew --skip=scoop"
+          fi
+          if [ -z "$SNAPCRAFT_TOKEN" ]; then
+            skip="$skip --skip=snapcraft"
+          fi
+          echo "skip=$skip" >> "$GITHUB_OUTPUT"
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
-          version: '~> v2'
-          args: release --clean
+          version: "~> v2"
+          args: release --clean ${{ steps.flags.outputs.skip }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -13,6 +13,39 @@ Remembery fixes that.
 - SQLite-backed trainers and sessions, stored in an encrypted vault.
 - YAML-driven level configuration.
 
+## Installation
+
+### macOS (Homebrew)
+
+```bash
+brew install alankiri/tap/remembery
+```
+
+### Windows (Scoop)
+
+```bash
+scoop bucket add remembery https://github.com/alankiri/scoop-bucket.git
+scoop install remembery
+```
+
+### Linux (Snap)
+
+```bash
+snap install remembery --classic
+```
+
+### Go
+
+If you have Go installed:
+
+```bash
+go install github.com/alankiri/remembery@latest
+```
+
+### Binaries
+
+Download a pre-built binary from the [releases page](https://github.com/alankiri/remembery/releases).
+
 ## Data and configuration
 
 Paths are resolved automatically:
