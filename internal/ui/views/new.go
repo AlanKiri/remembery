@@ -56,7 +56,7 @@ func (m NewModel) Init() tea.Cmd {
 // createTrainer persists a new trainer from the input values.
 func (m NewModel) createTrainer() error {
 	label := strings.TrimSpace(m.inputs[0].Value())
-	password := m.inputs[1].Value()
+	password := strings.TrimSpace(m.inputs[1].Value())
 	if label == "" {
 		return errors.New("label is required")
 	}
@@ -198,7 +198,7 @@ func (m NewModel) View(w, h int, errMsg string) string {
 		}
 		b.WriteString("\n")
 	}
-	b.WriteString(common.BlurPreview(m.eng, m.levels, m.inputs[1].Value(), m.levelIndex))
+	b.WriteString(common.BlurPreview(m.eng, m.levels, strings.TrimSpace(m.inputs[1].Value()), m.levelIndex))
 
 	if errMsg != "" {
 		b.WriteString("\n\n")

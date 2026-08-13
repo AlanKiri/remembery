@@ -41,6 +41,7 @@ func newUnlockModel(db *store.DB, creating bool) unlockModel {
 	pw.Placeholder = "master password"
 	pw.EchoMode = textinput.EchoPassword
 	pw.EchoCharacter = '•'
+	pw.Prompt = ""
 	pw.CharLimit = 64
 	pw.Focus()
 
@@ -48,6 +49,7 @@ func newUnlockModel(db *store.DB, creating bool) unlockModel {
 	confirm.Placeholder = "confirm password"
 	confirm.EchoMode = textinput.EchoPassword
 	confirm.EchoCharacter = '•'
+	confirm.Prompt = ""
 	confirm.CharLimit = 64
 
 	st := statePassword
@@ -149,7 +151,7 @@ func (m unlockModel) advance() (tea.Model, tea.Cmd) {
 		// Should not happen; y/n handles the choice.
 		return m, nil
 	case statePassword:
-		password := m.pw.Value()
+		password := strings.TrimSpace(m.pw.Value())
 		if password == "" {
 			m.errMsg = "Password cannot be empty"
 			return m, nil
@@ -167,8 +169,8 @@ func (m unlockModel) advance() (tea.Model, tea.Cmd) {
 		m.confirm.Focus()
 		return m, nil
 	case stateConfirm:
-		password := m.pw.Value()
-		if m.confirm.Value() != password {
+		password := strings.TrimSpace(m.pw.Value())
+		if strings.TrimSpace(m.confirm.Value()) != password {
 			m.errMsg = "Passwords do not match"
 			return m, nil
 		}

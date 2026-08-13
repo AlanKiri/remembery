@@ -51,12 +51,14 @@ func NewVaultModel(db *store.DB, cfg *config.Config, _ *engine.Engine, _ []level
 	m.vaultPw.Placeholder = "master password"
 	m.vaultPw.EchoMode = textinput.EchoPassword
 	m.vaultPw.EchoCharacter = '•'
+	m.vaultPw.Prompt = ""
 	m.vaultPw.CharLimit = 64
 
 	m.vaultConfirm = textinput.New()
 	m.vaultConfirm.Placeholder = "confirm password"
 	m.vaultConfirm.EchoMode = textinput.EchoPassword
 	m.vaultConfirm.EchoCharacter = '•'
+	m.vaultConfirm.Prompt = ""
 	m.vaultConfirm.CharLimit = 64
 
 	m.resetVault()
@@ -244,11 +246,13 @@ func (m *VaultModel) submitVaultInput() (VaultModel, tea.Cmd) {
 		m.vaultPw.Blur()
 		return *m, nil
 	case vaultStepConfirm:
-		if m.vaultPw.Value() != m.vaultConfirm.Value() {
+		pw := strings.TrimSpace(m.vaultPw.Value())
+		confirm := strings.TrimSpace(m.vaultConfirm.Value())
+		if pw != confirm {
 			m.vaultErrMsg = "Passwords do not match"
 			return *m, nil
 		}
-		v, err := m.db.CreateVaultAndEncrypt(m.vaultPw.Value())
+		v, err := m.db.CreateVaultAndEncrypt(pw)
 		if err != nil {
 			m.vaultErrMsg = err.Error()
 			return *m, nil
@@ -267,11 +271,13 @@ func (m *VaultModel) submitVaultInput() (VaultModel, tea.Cmd) {
 		m.vaultPw.Blur()
 		return *m, nil
 	case vaultStepChangeConfirm:
-		if m.vaultPw.Value() != m.vaultConfirm.Value() {
+		pw := strings.TrimSpace(m.vaultPw.Value())
+		confirm := strings.TrimSpace(m.vaultConfirm.Value())
+		if pw != confirm {
 			m.vaultErrMsg = "Passwords do not match"
 			return *m, nil
 		}
-		v, err := m.db.ChangeVault(m.vaultPw.Value())
+		v, err := m.db.ChangeVault(pw)
 		if err != nil {
 			m.vaultErrMsg = err.Error()
 			return *m, nil

@@ -119,7 +119,7 @@ func (m TrainModel) updateKey(msg tea.KeyMsg) (TrainModel, tea.Cmd) {
 }
 
 func (m *TrainModel) checkCorrect() tea.Cmd {
-	if m.eng.Validate(m.input, string(m.mask.Password)) {
+	if m.eng.Validate(strings.TrimSpace(m.input), string(m.mask.Password)) {
 		return m.doCorrect()
 	} else if len([]rune(m.input)) == len(m.mask.Password) {
 		m.tErrors++
