@@ -1,16 +1,17 @@
 # Introduction
 
-Remembery is a small TUI application created to help you memorize passwords, phone numbers, important ID's. Basically any string you can think of.
-We all know how it goes most of the time. Sometimes you'd wish to remember an important password but you use it too rarely to even memorize properly. Either introduce some simple solution like a daily reminder that notifies that you should repeat it, or maybe just suffer till the end of your life.
-Remembery fixes just that!
+Remembery is a small TUI application designed to help you memorize passwords, phone numbers, important IDs — basically any string you can think of.
+
+We all know how it goes. Sometimes you need to remember an important password, but you use it so rarely that you never really memorize it. You either adopt a simple solution, like a daily reminder, or just suffer until the end of your life.
+
+Remembery fixes that.
 
 ## Features
 
 - Vim-style list navigation.
 - Five configurable familiarity levels — edit `config.yaml` to adjust them to your needs.
 - SQLite-backed trainers and sessions, stored in an encrypted vault.
-- YAML-driven levels configuration.
-- - add new list items i could forget before
+- YAML-driven level configuration.
 
 ## Data and configuration
 
