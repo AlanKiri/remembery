@@ -48,7 +48,7 @@ func (m DeleteModel) Update(msg tea.Msg) (DeleteModel, tea.Cmd) {
 		}
 		return m, nil
 	case "enter":
-		if m.choice == 0 {
+		if m.choice == 1 {
 			if err := m.db.DeleteTrainer(m.trainer.ID); err != nil {
 				return m, screen.ChangeScreen(screen.ScreenList, err.Error())
 			}
@@ -67,7 +67,7 @@ func (m DeleteModel) View(w, h int) string {
 	body.WriteString("\n\n")
 	body.WriteString(fmt.Sprintf("Delete %q?\n\n", m.trainer.Label))
 
-	options := []string{"Yes", "No"}
+	options := []string{"No", "Yes"}
 	for i, opt := range options {
 		style := lipgloss.NewStyle().Foreground(styles.Glow.Cream)
 		if i == m.choice {

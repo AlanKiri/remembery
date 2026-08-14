@@ -51,7 +51,7 @@ func (m EarlyModel) Update(msg tea.Msg) (EarlyModel, tea.Cmd) {
 		}
 		return m, nil
 	case "enter":
-		if m.choice == 0 {
+		if m.choice == 1 {
 			return m, common.StartTrain(m.trainer, false)
 		}
 		return m, screen.ChangeScreen(screen.ScreenList)
@@ -84,7 +84,7 @@ func (m EarlyModel) View(w, h int) string {
 	body.WriteString(fmt.Sprintf("%s is %s right now.\n\n%s\n\n%s\n",
 		label, resting, explanation, availableIn))
 
-	options := []string{"Yes — practice anyway", "No — go back"}
+	options := []string{"No — go back", "Yes — practice anyway"}
 	for i, opt := range options {
 		prefix := "  "
 		style := lipgloss.NewStyle().Foreground(styles.Glow.Cream)

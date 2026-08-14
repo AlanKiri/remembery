@@ -32,6 +32,9 @@ lint:
     go vet ./...
     test -z "$(gofmt -l .)"
 
+# Pre-push local checks (lint, test, build, and a GoReleaser dry run)
+pre-push: lint test build release-snapshot
+
 # Tidy go.mod and go.sum
 tidy:
     go mod tidy

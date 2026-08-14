@@ -22,18 +22,19 @@ const (
 )
 
 type unlockModel struct {
-	db       *store.DB
-	creating bool
-	state    unlockState
-	pw       textinput.Model
-	confirm  textinput.Model
-	errMsg   string
-	result   *vault.Vault
-	skipped  bool
-	reset    bool
-	showPw   bool
-	width    int
-	height   int
+	db         *store.DB
+	creating   bool
+	state      unlockState
+	pw         textinput.Model
+	confirm    textinput.Model
+	errMsg     string
+	result     *vault.Vault
+	skipped    bool
+	reset      bool
+	showPw     bool
+	resetFocus int
+	width      int
+	height     int
 }
 
 func newUnlockModel(db *store.DB, creating bool) unlockModel {
@@ -91,7 +92,7 @@ func (m unlockModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.KeyMsg:
 		s := msg.String()
-		if s == "esc" {
+		if s == "esc" && m.state != stateResetWarn {
 			return m, tea.Quit
 		}
 		if s == "y" && m.state == stateChoice {
@@ -106,6 +107,7 @@ func (m unlockModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if s == "ctrl+r" && m.state == statePassword && !m.creating {
 			m.state = stateResetWarn
+			m.resetFocus = 0
 			m.errMsg = ""
 			return m, nil
 		}
@@ -115,18 +117,31 @@ func (m unlockModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.state == stateResetWarn {
-			if s == "n" {
-				m.state = statePassword
-				m.errMsg = ""
-				return m, nil
-			}
-			if s == "y" {
-				if err := m.db.Reset(); err != nil {
-					m.errMsg = err.Error()
-					return m, nil
+			switch s {
+			case "j", "down":
+				if m.resetFocus < 1 {
+					m.resetFocus++
 				}
-				m.reset = true
-				return m, tea.Quit
+			case "k", "up":
+				if m.resetFocus > 0 {
+					m.resetFocus--
+				}
+			case "enter":
+				if m.resetFocus == 1 {
+					if err := m.db.Reset(); err != nil {
+						m.errMsg = err.Error()
+						return m, nil
+					}
+					m.reset = true
+					return m, tea.Quit
+				}
+				m.state = statePassword
+				m.resetFocus = 0
+				m.errMsg = ""
+			case "esc":
+				m.state = statePassword
+				m.resetFocus = 0
+				m.errMsg = ""
 			}
 			return m, nil
 		}
@@ -213,11 +228,15 @@ func (m unlockModel) View() string {
 		body.WriteString(lipgloss.NewStyle().Foreground(styles.Glow.Red).Bold(true).Render("WARNING: this will erase all stored data."))
 		body.WriteString("\n\n")
 		body.WriteString("If you forgot your master password, resetting is the only way to start over.\n\n")
-		body.WriteString(lipgloss.NewStyle().Foreground(styles.Glow.Green).Render("[y]es"))
-		body.WriteString(" to confirm ")
-		body.WriteString(lipgloss.NewStyle().Foreground(styles.Glow.Red).Render("[n]o"))
-		body.WriteString(" to cancel")
-		body.WriteString("\n")
+		options := []string{"No", "Yes"}
+		for i, opt := range options {
+			style := lipgloss.NewStyle().Foreground(styles.Glow.Cream)
+			if i == m.resetFocus {
+				style = lipgloss.NewStyle().Bold(true).Foreground(styles.Glow.Blue)
+			}
+			body.WriteString(style.Render("  " + opt))
+			body.WriteString("\n")
+		}
 	}
 
 	if m.errMsg != "" {
@@ -240,7 +259,7 @@ func (m unlockModel) View() string {
 	case stateConfirm:
 		footerText = "enter: create  ctrl+s: show  esc: quit"
 	case stateResetWarn:
-		footerText = "y: confirm  n: cancel  esc: quit"
+		footerText = "j/k: choose  enter: confirm  esc: cancel"
 	}
 	footer := styles.DimStyle.Padding(0, 2).Render(footerText)
 
