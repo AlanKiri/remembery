@@ -15,6 +15,34 @@ Remembery fixes that.
 
 ## Installation
 
+The easiest way to avoid any security warnings is to build from source.
+
+### From source
+
+If you have Go installed:
+
+```bash
+go install github.com/alankiri/remembery@latest
+```
+
+Or clone and build locally:
+
+```bash
+git clone https://github.com/alankiri/remembery.git
+cd remembery
+go build -o remembery .
+```
+
+### Package managers and pre-built binaries
+
+Pre-built binaries (including those installed via Homebrew, Scoop, or downloaded from the [releases page](https://github.com/alankiri/remembery/releases)) are not code-signed. On first run, macOS and Windows may show a security warning. The binaries are safe, but the operating system cannot verify the publisher.
+
+- **macOS:** After a first failed launch, go to **System Settings → Privacy & Security → Security** and click **Allow Anyway**. Alternatively, remove the quarantine flag:
+  ```bash
+  xattr -d com.apple.quarantine /path/to/remembery
+  ```
+- **Windows:** When SmartScreen appears, click **More info** and then **Run anyway**.
+
 ### macOS (Homebrew)
 
 ```bash
