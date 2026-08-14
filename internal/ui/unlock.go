@@ -91,7 +91,7 @@ func (m unlockModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.KeyMsg:
 		s := msg.String()
-		if s == "q" {
+		if s == "esc" {
 			return m, tea.Quit
 		}
 		if s == "y" && m.state == stateChoice {
@@ -104,7 +104,7 @@ func (m unlockModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.skipped = true
 			return m, tea.Quit
 		}
-		if s == "r" && m.state == statePassword && !m.creating {
+		if s == "ctrl+r" && m.state == statePassword && !m.creating {
 			m.state = stateResetWarn
 			m.errMsg = ""
 			return m, nil
@@ -228,19 +228,19 @@ func (m unlockModel) View() string {
 	var footerText string
 	switch m.state {
 	case stateChoice:
-		footerText = "y: enable  n: skip  q: quit"
+		footerText = "y: enable  n: skip  esc: quit"
 	case statePassword:
 		if m.creating {
-			footerText = "enter: continue  ctrl+s: show  q: quit"
+			footerText = "enter: continue  ctrl+s: show  esc: quit"
 		} else {
 			footerText = styles.DimStyle.Render("enter: unlock  ctrl+s: show") +
-				lipgloss.NewStyle().Foreground(styles.Glow.Red).Render("  r: reset") +
-				styles.DimStyle.Render("  q: quit")
+				lipgloss.NewStyle().Foreground(styles.Glow.Red).Render("  ctrl+r: reset") +
+				styles.DimStyle.Render("  esc: quit")
 		}
 	case stateConfirm:
-		footerText = "enter: create  ctrl+s: show  q: quit"
+		footerText = "enter: create  ctrl+s: show  esc: quit"
 	case stateResetWarn:
-		footerText = "y: confirm  n: cancel  q: quit"
+		footerText = "y: confirm  n: cancel  esc: quit"
 	}
 	footer := styles.DimStyle.Padding(0, 2).Render(footerText)
 
